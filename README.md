@@ -1,10 +1,31 @@
 # Echo · DSH 的陪伴人格与长期记忆
 
+**项目队友：[Peirar](https://github.com/Peirar) · [Terabinaryte](https://github.com/Terabinaryte)**
+
+发起与维护：[Yotaoer](https://github.com/Yotaoer)
+
 Echo 是 [DeepSeek Harness（DSH）](https://www.npmjs.com/package/@deepseek-ai/dsh) 插件，提供人格、跨会话记忆、情绪、关怀、日记和审计面板。Echo 运行在 DSH 内；QQ 与语音由独立插件接入。
 
 **当前为 `0.46.0-rc.1` 预发布。** 先用独立数据目录评估并备份已有数据。本地存储不等于全部处理离线：对话、检索记忆和反思材料可能经宿主交给你选择的模型服务，详见 [PRIVACY.md](PRIVACY.md)。
 
-![新版情绪图，全部为合成数据](docs/images/emotion-desktop.png)
+## 界面预览
+
+以下截图均来自隔离演示环境，使用合成数据，不包含真实对话或记忆。
+
+### 情绪与关系
+
+![情绪与关系空间演示](docs/images/showcase/01-emotion-desktop.png)
+
+### 长期记忆
+
+![长期记忆页面演示](docs/images/showcase/02-memory-desktop.png)
+
+### 统一设置
+
+![统一设置页面演示](docs/images/showcase/03-settings-desktop.png)
+
+[查看手机端情绪图](docs/images/showcase/04-emotion-mobile.png)
+
 
 ## 当前功能
 
