@@ -1,0 +1,64 @@
+{
+  "tests": [
+    {
+      "id": "test_embed.EmbedWithDeps.test_warmup_ok_and_reports_ms",
+      "module": "python/manual/verify_embed.py",
+      "reason": "requires explicit local ONNX dependencies and actual model files",
+      "status": "NOT_RUN_MANUAL"
+    },
+    {
+      "id": "test_embed.EmbedWithDeps.test_selfcheck_all_green",
+      "module": "python/manual/verify_embed.py",
+      "reason": "requires explicit local ONNX dependencies and actual model files",
+      "status": "NOT_RUN_MANUAL"
+    },
+    {
+      "id": "test_embed.EmbedWithDeps.test_embed_shape_and_norm",
+      "module": "python/manual/verify_embed.py",
+      "reason": "requires explicit local ONNX dependencies and actual model files",
+      "status": "NOT_RUN_MANUAL"
+    },
+    {
+      "id": "test_embed.EmbedWithDeps.test_embed_is_deterministic",
+      "module": "python/manual/verify_embed.py",
+      "reason": "requires explicit local ONNX dependencies and actual model files",
+      "status": "NOT_RUN_MANUAL"
+    },
+    {
+      "id": "test_embed.EmbedWithDeps.test_embed_empty_returns_empty_matrix",
+      "module": "python/manual/verify_embed.py",
+      "reason": "requires explicit local ONNX dependencies and actual model files",
+      "status": "NOT_RUN_MANUAL"
+    },
+    {
+      "id": "test_graph_mine.ContractReconcile.test_pinned_snapshot_reproduces_same_day_numbers",
+      "module": "python/manual/verify_snapshot.py",
+      "reason": "requires explicitly supplied private historical snapshot; not distributed",
+      "status": "NOT_RUN_MANUAL"
+    },
+    {
+      "id": "test_graph_mine.ContractReconcile.test_pinned_snapshot_reproduces_contract_numbers",
+      "module": "python/manual/verify_snapshot.py",
+      "reason": "requires explicitly supplied private historical snapshot; not distributed",
+      "status": "NOT_RUN_MANUAL"
+    },
+    {
+      "id": "test_graph_mine.ContractReconcile.test_contract_numbers_need_the_names_fed_in",
+      "module": "python/manual/verify_snapshot.py",
+      "reason": "requires explicitly supplied private historical snapshot; not distributed",
+      "status": "NOT_RUN_MANUAL"
+    },
+    {
+      "id": "test_graph_mine.ContractReconcile.test_dry_run_names_shapes_never_throw",
+      "module": "python/manual/verify_snapshot.py",
+      "reason": "requires explicitly supplied private historical snapshot; not distributed",
+      "status": "NOT_RUN_MANUAL"
+    },
+    {
+      "id": "test_graph_mine.ContractReconcile.test_dry_run_on_snapshot_is_read_only",
+      "module": "python/manual/verify_snapshot.py",
+      "reason": "requires explicitly supplied private historical snapshot; not distributed",
+      "status": "NOT_RUN_MANUAL"
+    }
+  ]
+}

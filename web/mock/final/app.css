@@ -1,0 +1,1394 @@
+@font-face {
+  font-family: "Noto Sans SC";
+  src: local("Noto Sans SC");
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Noto Serif SC";
+  src: local("Noto Serif SC");
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+}
+
+:root {
+  --ground: #ffffff;
+  --surface: #f7f8f6;
+  --raised: #ffffff;
+  --border: #e7e9e5;
+  --rule: #eceeea;
+  --control: #cfd4ce;
+  --text: #1f201d;
+  --muted: #626660;
+  --faint: #6b7069;
+  --accent: #1b6e66;
+  --positive: #2e7d32;
+  --negative: #b42318;
+  --warning: #92400e;
+  --chart: #1b6e66;
+  --pill-positive-bg: #dcfae5;
+  --pill-positive-ink: #164e2a;
+  --pill-warning-bg: #fffbeb;
+  --pill-warning-ink: #92400e;
+  --pill-neutral-bg: #eff1ed;
+  --pill-neutral-ink: #3d443d;
+  --radius-card: 22px;
+  --radius-control: 999px;
+  --sidebar-width: 224px;
+  --gap: 16px;
+  --pad: 20px;
+  --control-height: 38px;
+  --row-height: 63px;
+  --serif: "Noto Serif SC", "Songti SC", serif;
+  --sans: "Noto Sans SC", "Microsoft YaHei", system-ui, sans-serif;
+}
+
+* { box-sizing: border-box; }
+html { min-width: 320px; scroll-behavior: smooth; }
+/* The nav links jump to panel anchors. On phones the bar above them is sticky and 48px tall, so an
+   unscrolled jump parked the title underneath it (measured: title top 16px, bar 0..48). Every jump target
+   now keeps clear of what is pinned above it. */
+#home, #conversations, #threads, #diary { scroll-margin-top: 24px; }
+body {
+  margin: 0;
+  min-width: 320px;
+  background: var(--ground);
+  color: var(--text);
+  font-family: var(--sans);
+  font-size: 14px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+body.menu-open { overflow: hidden; }
+button, a { font: inherit; }
+a { color: inherit; text-decoration: none; }
+button { border: 0; cursor: pointer; }
+:focus-visible { outline: 3px solid rgba(27, 110, 102, .38); outline-offset: 3px; }
+.skip-link {
+  position: fixed;
+  z-index: 100;
+  left: 16px;
+  top: -48px;
+  padding: 10px 14px;
+  border-radius: 8px;
+  background: var(--text);
+  color: #fff;
+  transition: top .15s ease;
+}
+.skip-link:focus { top: 16px; }
+
+.app-shell { display: flex; min-height: 100vh; }
+.sidebar {
+  width: var(--sidebar-width);
+  flex: 0 0 var(--sidebar-width);
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  padding: 32px 12px 24px;
+  background: var(--ground);
+}
+.brand {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding: 0 12px;
+  margin-bottom: 48px;
+}
+.brand-name { font-family: var(--serif); font-size: 23px; line-height: 1.05; letter-spacing: -.02em; }
+.brand-detail { color: var(--muted); font-size: 12px; }
+/* 四个分组各是一间房：分组之间是 26px 的空气，房里的项目之间只有 2px。 */
+.primary-nav { display: grid; gap: 0; min-height: 0; overflow-y: auto; }
+.nav-link {
+  position: relative;
+  min-height: 40px;
+  display: flex;
+  align-items: center;
+  padding: 0 12px;
+  border-radius: 9px;
+  color: var(--muted);
+  font-size: 14px;
+  transition: background-color .15s ease, color .15s ease;
+}
+.nav-link:hover { background: var(--surface); color: var(--text); }
+/* 当前项：字变成墨色、加重一档，左侧一条 2px 的短划。没有色块、没有图标、没有动效。 */
+.nav-link.is-active { color: var(--text); font-weight: 500; }
+.nav-link.is-active::before {
+  content: "";
+  position: absolute;
+  left: 1px;
+  top: 50%;
+  width: 2px;
+  height: 14px;
+  margin-top: -7px;
+  border-radius: 1px;
+  background: var(--text);
+}
+.sidebar-foot {
+  display: grid;
+  gap: 5px;
+  margin-top: auto;
+  padding: 0 12px;
+  color: var(--muted);
+  font-size: 12px;
+}
+.scope-name { color: var(--text); font-size: 13px; }
+.scope-state, .sheet-foot { display: flex; align-items: center; gap: 7px; }
+.state-dot {
+  width: 7px;
+  height: 7px;
+  flex: 0 0 7px;
+  border-radius: 50%;
+  background: var(--accent);
+}
+.main-content { flex: 1; min-width: 0; }
+.workspace {
+  width: min(1100px, calc(100% - 48px));
+  margin: 0 auto;
+  padding: 68px 0 42px;
+  /* the width of the column itself decides when the 6-up figures and the 2-column status list
+     stop fitting — a viewport breakpoint cannot see the 224px sidebar eating into it */
+  container-type: inline-size;
+}
+.greeting { margin-bottom: 42px; }
+.greeting h1 {
+  max-width: 720px;
+  margin: 0;
+  font-family: var(--serif);
+  font-size: 32px;
+  font-weight: 500;
+  letter-spacing: -.045em;
+  line-height: 1.16;
+}
+.greeting-note { margin: 14px 0 0; color: var(--muted); font-size: 16px; }
+.current-date { margin: 4px 0 0; color: var(--faint); font-size: 13px; }
+.grid-12 {
+  display: grid;
+  grid-template-columns: repeat(12, minmax(0, 1fr));
+  gap: var(--gap);
+}
+.readings { margin-bottom: 16px; }
+.reading {
+  min-height: 128px;
+  display: flex;
+  flex-direction: column;
+  padding: 16px;
+  border-radius: var(--radius-card);
+  background: var(--surface);
+}
+.reading h2, .panel h2 {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.35;
+}
+.reading-value {
+  display: flex;
+  align-items: baseline;
+  min-height: 47px;
+  margin: 12px 0 1px;
+  font-variant-numeric: tabular-nums;
+}
+.value-main { font-size: 32px; font-weight: 400; letter-spacing: -.03em; line-height: 1; }
+.value-unit { margin-left: 3px; color: var(--muted); font-size: 14px; }
+.reading-note { margin: auto 0 0; color: var(--muted); font-size: 12px; line-height: 1.4; }
+.reading-note .note-part { display: inline-block; white-space: nowrap; }
+.reading-note .note-part + .note-part { margin-left: 4px; }
+.content-grid { align-items: start; }
+.panel {
+  min-width: 0;
+  padding: var(--pad);
+  border-radius: var(--radius-card);
+  background: var(--surface);
+}
+.panel-heading {
+  min-height: 44px;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  margin-bottom: 13px;
+}
+.compact-heading { margin-bottom: 10px; min-height: 0; }
+.panel-caption { margin: 3px 0 0; color: var(--muted); font-size: 12px; line-height: 1.4; }
+.count-label {
+  min-width: 24px;
+  color: var(--muted);
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+.panel-heading > div > .count-label { margin: 3px 0 0; text-align: left; }
+.conversation-list, .thread-list, .diary-list { display: grid; gap: 8px; }
+.panel-more { display: flex; align-items: flex-start; }
+.panel-more[hidden] { display: none; }
+.more-button {
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-control);
+  background: var(--ground);
+  color: var(--text);
+  font-size: 13px;
+  line-height: 1.4;
+  white-space: nowrap;
+  transition: background-color .15s ease, border-color .15s ease;
+}
+.more-button:hover { background: var(--surface); border-color: var(--control); }
+.panel-actions { display: flex; align-items: flex-start; gap: 8px; }
+/* One page of rows replaces the previous page, so the list box, not the document, is what keeps its
+   size. Every control keeps a 44px touch target; a disabled page button says so with the attribute and
+   the muted colours are only its echo. */
+.pager { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+.pager[hidden] { display: none; }
+.pager-button {
+  min-width: 92px;
+  min-height: 44px;
+  padding: 0 16px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-control);
+  background: var(--ground);
+  color: var(--text);
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+  transition: background-color .15s ease, border-color .15s ease;
+}
+.pager-button:hover:not([disabled]) { background: var(--surface); border-color: var(--control); }
+.pager-button[disabled] { border-color: var(--rule); background: var(--surface); color: var(--faint); cursor: not-allowed; }
+.thread-filters { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 10px; }
+.thread-filters[hidden] { display: none; }
+.filter-chip {
+  min-height: 44px;
+  flex: 0 0 auto; /* 永远按字宽站住：折行时最后一颗不许被压窄 */
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-control);
+  background: var(--ground);
+  color: var(--muted);
+  font-size: 13px;
+  transition: background-color .15s ease, border-color .15s ease, color .15s ease;
+}
+.filter-chip:hover { border-color: var(--control); color: var(--text); }
+.filter-chip[aria-pressed="true"] { border-color: var(--control); background: #ebedeb; color: var(--text); }
+.chip-count { color: var(--faint); font-variant-numeric: tabular-nums; }
+.filter-chip[aria-pressed="true"] .chip-count { color: var(--text); }
+.diary-toggle {
+  min-height: 44px;
+  align-self: center;
+  padding: 0 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-control);
+  background: var(--ground);
+  color: var(--text);
+  font-size: 12px;
+  transition: background-color .15s ease, border-color .15s ease;
+}
+.diary-toggle:hover { background: var(--surface); border-color: var(--control); }
+.diary-full { display: grid; gap: 8px; }
+.diary-full[hidden] { display: none; }
+/* Reading a list in full leaves the card beside it far behind: twelve conversations are 1,465px against a
+   437px status card, a diary opened in full is 1,318px against a 283px list. Sticky does not rescue that
+   here: a sticky item in a multi-row grid is clamped to the grid, not to its own row, so the stretched
+   card slid down and overlapped the row below (measured: conversations top -657 instead of -954). So the
+   grid gives the open list the whole width and the short card moves underneath it: no empty column and
+   nothing overlapping. Below the two-column breakpoint the cards already sit one per row. */
+@media (min-width: 1181px) {
+  .content-grid.is-reading { grid-template-columns: minmax(0, 1fr); }
+  .content-grid.is-reading > .panel { grid-column: 1; }
+}
+.conversation-row, .thread-row, .diary-row {
+  min-width: 0;
+  display: grid;
+  gap: 12px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 13px;
+  background: var(--raised);
+}
+.conversation-row { grid-template-columns: 100px minmax(0, 1fr) minmax(0, 1.2fr); align-items: start; min-height: 102px; }
+.thread-row { grid-template-columns: minmax(0, 1fr) auto; align-items: center; min-height: 50px; }
+.thread-row .thread-copy { min-height: 50px; display: flex; align-items: center; }
+.diary-row { grid-template-columns: 76px minmax(0, 1fr) auto; align-items: start; min-height: 55px; }
+.diary-row .row-copy p {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+}
+/* The opened entry prints its whole text, so it must not inherit the two-line clamp above. */
+.diary-row .row-copy .diary-full p {
+  display: block;
+  overflow: visible;
+  -webkit-line-clamp: unset;
+  white-space: pre-line;
+}
+.row-channel, .row-date, .row-kind {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.45;
+}
+.row-date, .row-kind { font-variant-numeric: tabular-nums; }
+.row-copy { min-width: 0; line-height: 1.5; overflow-wrap: anywhere; }
+.row-copy p { margin: 0; }
+.conversation-row .row-copy p {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  overflow: hidden;
+}
+.row-copy.reply { margin-top: 3px; color: var(--muted); }
+.row-copy.reply p::before { content: "Echo · "; color: var(--accent); }
+.thread-copy { min-width: 0; line-height: 1.45; overflow-wrap: anywhere; }
+.thread-kind { color: var(--muted); font-size: 12px; white-space: nowrap; }
+.diary-row .row-copy { display: grid; gap: 2px; }
+.diary-mood { color: var(--muted); font-size: 12px; }
+.loading-copy, .empty-copy, .error-copy { margin: 8px 0 2px; color: var(--muted); font-size: 13px; }
+.status-list { display: grid; gap: 0; margin: 0; }
+.status-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  min-height: 47px;
+  padding: 14px 0;
+  border-bottom: 1px solid var(--rule);
+}
+.status-row:last-child { border-bottom: 0; }
+.status-row dt { color: var(--muted); white-space: nowrap; }
+.status-row dd { margin: 0; font-variant-numeric: tabular-nums; text-align: right; }
+.status-row dd.is-good { color: var(--positive); }
+.status-row dd.is-alert { color: var(--negative); }
+/* 12 status rows in one narrow column would stand far taller than the card beside it: two columns
+   once the panel is wide enough for a pair, and the two long-valued rows take the full width.
+   Below that the panels are stacked, so one column reads better. */
+@container (min-width: 902px) {
+  .status-list { grid-template-columns: repeat(2, minmax(0, 1fr)); column-gap: 20px; }
+  .status-row:nth-last-child(-n + 2) { border-bottom: 0; }
+  .status-row.is-wide { grid-column: 1 / -1; }
+}
+/* 6 figures can only hold their one- or two-line footnotes while the card is ~162px wide; under
+   that they become 2 x 3 rather than a third line of text. */
+@container (max-width: 1039px) {
+  .readings { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .readings .reading { grid-column: span 1; }
+}
+.page-foot {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  margin-top: 32px;
+  padding: 0 4px;
+  color: var(--faint);
+  font-size: 12px;
+}
+.span-2 { grid-column: span 2; }
+.span-3 { grid-column: span 3; }
+.span-4 { grid-column: span 4; }
+.span-6 { grid-column: span 6; }
+.span-8 { grid-column: span 8; }
+.span-9 { grid-column: span 9; }
+.mobile-bar, .menu-scrim { display: none; }
+
+@media (min-width: 768px) and (max-width: 1180px) {
+  .workspace { width: calc(100% - 40px); }
+  .sidebar { width: 200px; flex-basis: 200px; }
+  .readings { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .readings .span-2,
+  .readings .span-3 { grid-column: span 1; }
+  .content-grid { grid-template-columns: repeat(12, minmax(0, 1fr)); }
+  .content-grid > .span-9,
+  .content-grid > .span-8,
+  .content-grid > .span-4,
+  .content-grid > .span-3,
+  .content-grid > .span-6,
+  .status-panel { grid-column: 1 / -1; }
+  .panel { padding: 16px; }
+  .content-grid { grid-template-columns: minmax(0, 1fr); }
+  .content-grid > .span-9,
+  .content-grid > .span-8,
+  .content-grid > .span-6,
+  .content-grid > .span-4,
+  .content-grid > .span-3,
+  .content-grid > .status-panel { grid-column: 1; }
+}
+
+@media (max-width: 767px) {
+  body { font-size: 14px; }
+  .app-shell { display: block; }
+  .sidebar { display: none; }
+  .mobile-bar {
+    position: sticky;
+    z-index: 20;
+    top: 0;
+    height: 48px;
+    display: grid;
+    grid-template-columns: 1fr auto 1fr;
+    align-items: center;
+    padding: 0 16px;
+    border-bottom: 1px solid var(--rule);
+    background: rgba(255, 255, 255, .98);
+  }
+  .mobile-wordmark { justify-self: start; font-family: var(--serif); font-size: 18px; }
+  .mobile-page-name { color: var(--muted); font-size: 13px; }
+  .menu-trigger {
+    justify-self: end;
+    width: 44px;
+    height: 44px;
+    display: grid;
+    place-items: center;
+    padding: 0;
+    background: transparent;
+    color: var(--text);
+  }
+  .menu-lines { display: grid; gap: 5px; width: 19px; }
+  .menu-lines i { display: block; height: 1.5px; background: currentColor; }
+  .workspace { width: calc(100% - 32px); padding: 34px 0 30px; }
+  .greeting { margin-bottom: 28px; }
+  .greeting h1 { font-size: 24px; line-height: 1.3; }
+  .greeting-note { margin-top: 10px; font-size: 14px; }
+  .current-date { font-size: 12px; }
+  .grid-12 { gap: 12px; }
+  .readings { margin-bottom: 12px; }
+  .reading { grid-column: span 6; min-height: 112px; padding: 14px; border-radius: 17px; }
+  .reading h2, .panel h2 { font-size: 14px; }
+  .reading-value { min-height: 40px; margin-top: 10px; }
+  .value-main { font-size: 28px; }
+  .reading-note { font-size: 12px; }
+  .content-grid { gap: 12px; }
+  .content-grid > .span-9,
+  .content-grid > .span-8,
+  .content-grid > .span-6,
+  .content-grid > .span-4,
+  .content-grid > .span-3,
+  .content-grid > .status-panel { grid-column: 1 / -1; }
+  #conversations, #threads, #diary, .status-panel { min-height: 0; }
+  .panel { padding: 16px; border-radius: 17px; }
+  .panel-heading { margin-bottom: 11px; }
+  .conversation-row { grid-template-columns: 1fr; gap: 3px; padding: 11px; min-height: 0; }
+  .conversation-row .row-channel { order: -1; }
+  .thread-row { min-height: 0; padding: 11px; }
+  /* No room for a third column at phone width: the toggle drops under the text, still 44px. */
+  .diary-row { grid-template-columns: 68px minmax(0, 1fr); row-gap: 6px; padding: 11px; }
+  .diary-row .diary-toggle { grid-column: 2; justify-self: start; align-self: start; }
+  #home, #conversations, #threads, #diary { scroll-margin-top: 56px; }
+  .page-foot { margin-top: 24px; }
+  .menu-scrim[hidden] { display: none; }
+  .menu-scrim {
+    position: fixed;
+    z-index: 50;
+    inset: 0;
+    display: block;
+    background: rgba(31, 32, 29, .25);
+  }
+  .menu-sheet {
+    min-height: 100%;
+    width: min(360px, 88vw);
+    margin-left: auto;
+    padding: 24px 20px;
+    background: var(--ground);
+  }
+  .sheet-heading { display: flex; justify-content: space-between; align-items: start; gap: 16px; }
+  .sheet-heading h2 { margin: 0; font-family: var(--serif); font-size: 24px; font-weight: 500; }
+  .sheet-heading p { margin: 3px 0 0; color: var(--muted); font-size: 13px; }
+  .sheet-close { min-width: 64px; min-height: 44px; border-radius: 9px; background: var(--surface); color: var(--text); }
+  .sheet-nav { display: grid; gap: 6px; margin-top: 34px; }
+  .sheet-nav .nav-link { min-height: 48px; padding: 0 14px; font-size: 16px; }
+  .sheet-foot { margin-top: 38px; color: var(--muted); font-size: 13px; }
+  /* A caption this long pushes the count and the toggle onto a second line; the auto margin keeps them
+     at the right edge so they still read as the heading's action, not as stray text under it. */
+  .panel-actions { margin-left: auto; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+  *, *::before, *::after { transition-duration: .01ms !important; }
+}
+
+/* ---- P1 · 视图壳 ------------------------------------------------------------ */
+/* 导航是她在本机的四间房。分组名比房里的项目更轻，分组之间 26px、项目之间 2px：读起来是
+   "你在哪间房"，不是一张链接清单。 */
+.nav-group { display: grid; gap: 2px; }
+.nav-group + .nav-group { margin-top: 26px; }
+.nav-group-label {
+  margin: 0 0 8px;
+  padding: 0 12px;
+  color: var(--faint);
+  font-size: 12px;
+  line-height: 1.3;
+}
+
+/* 屏头：h1 + 这一屏回答什么 + 右侧一个刷新。h1 是页面唯一的 h1，切屏时接焦点。 */
+.view-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px 24px; }
+.view-head-text { flex: 1 1 auto; min-width: 0; }
+.view-lead { margin: 8px 0 0; max-width: 620px; color: var(--muted); font-size: 15px; line-height: 1.45; }
+.view-tools { display: flex; flex: 0 0 auto; align-items: center; gap: 10px; padding-top: 4px; }
+.view-tag {
+  padding: 2px 8px;
+  border-radius: 4px;
+  background: var(--pill-neutral-bg);
+  color: var(--pill-neutral-ink);
+  font-size: 12px;
+  white-space: nowrap;
+}
+.view-refresh {
+  min-height: 40px;
+  padding: 0 16px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-control);
+  background: var(--ground);
+  color: var(--text);
+  font-size: 13px;
+  white-space: nowrap;
+  transition: background-color .15s ease, border-color .15s ease;
+}
+.view-refresh:hover:not([disabled]) { background: var(--surface); border-color: var(--control); }
+.view-refresh[disabled] {
+  border-color: var(--rule);
+  background: var(--surface);
+  color: var(--faint);
+  cursor: not-allowed;
+}
+
+/* 切屏只做一次 160ms 的淡入与 6px 上移，不做整页的动画表演。 */
+.view { animation: view-enter 160ms ease-out both; }
+.view[hidden] { display: none; }
+@keyframes view-enter {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* 还没接数据的屏：左边一块浅底说明（一句实话 + 数据来源），右边一张"将要显示什么"的表。
+   表里只打缺值短横：不编数字、不做成能点的控件、也不写「还在做」这种死话。 */
+.placeholder {
+  display: grid;
+  grid-template-columns: minmax(0, 340px) minmax(0, 1fr);
+  align-items: start;
+  gap: 16px 40px;
+}
+.placeholder-note { padding: 16px 20px; border-radius: var(--radius-card); background: var(--surface); }
+.view-state { margin: 0; color: var(--muted); font-size: 15px; line-height: 1.5; overflow-wrap: anywhere; }
+/* 端点各自成块：窄屏在两条路径之间换行，不从一条路径中间劈开（实测 390 会把页面撑出横向滚动）。 */
+.spec-source { margin: 14px 0 0; color: var(--faint); font-size: 12px; line-height: 1.6; overflow-wrap: anywhere; }
+.spec-source .source-path { display: inline-block; margin-left: 8px; }
+.spec-list { display: grid; margin: 0; }
+.spec-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 16px;
+  min-height: 48px;
+  padding: 13px 0;
+  border-bottom: 1px solid var(--rule);
+}
+.spec-row:last-child { border-bottom: 0; }
+.spec-row dt { color: var(--muted); }
+.spec-row dd { margin: 0; color: var(--faint); font-variant-numeric: tabular-nums; text-align: right; }
+
+@media (max-width: 767px) {
+  .view-head { flex-wrap: wrap; gap: 10px 12px; }
+  .view-head-text { flex: 1 1 200px; }
+  .view-tools { margin-left: auto; padding-top: 0; }
+  .view-lead { margin-top: 8px; font-size: 14px; }
+  .view-refresh { min-height: 44px; padding: 0 14px; }
+  .nav-group + .nav-group { margin-top: 22px; }
+  .sheet-nav .nav-group-label { padding: 0 14px; }
+  .sheet-nav .nav-link.is-active::before { left: 3px; }
+  .placeholder { grid-template-columns: minmax(0, 1fr); gap: 16px; }
+  .placeholder-note { padding: 16px; }
+  .view-state { font-size: 14px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .view { animation: none; }
+}
+
+/* ---- 复审 · 页脚贴底 --------------------------------------------------------
+   占位屏的内容比一屏短：页脚紧贴着它的时候，下面那四百来像素读起来像页面被截断。
+   主列与工作区都撑成一列、页脚用 auto 外边距落到最底，页脚就落在视口底边附近；空出来的高度
+   留在内容与页脚之间，不灌假数据、也不把卡片拉高。近况比一屏长，auto 外边距自动归零，
+   于是它与改前完全一样（32px 的间隔改挂在 padding 上，总高度不变）。 */
+.main-content { display: flex; flex-direction: column; }
+.workspace { display: flex; flex-direction: column; flex: 1 0 auto; }
+.page-foot { margin-top: auto; padding: 32px 4px 0; }
+
+@media (max-width: 767px) {
+  /* 手机上壳是块级，主列撑不满：给工作区一个「一屏减去 48px 顶栏」的下限，页脚才落到底。 */
+  .workspace { min-height: calc(100svh - 48px); }
+  .page-foot { padding-top: 24px; }
+}
+
+/* ---- P2 · 列表屏（对话 / 待跟进）--------------------------------------------
+   这两屏不套 .reading 卡片：主指标是裸文字，下面一整块真列表。
+   行不是卡片，是一条条用一根浅线分开的记录：一百行的时候，一百个圆角盒子就成了噪音。
+   主指标是这一屏唯一的主角，不是一句话：标签、数字、说明竖排三层、左对齐、行间 6px。
+   挤在一条基线上时（实测三层 top 是 177 / 201 / 200），40px 的数字只读成句子里的一个词。
+   6px 是这三层之间该有的那一口气：压到 4px 能让首屏最大空格在 60px 网格上少算一格、
+   刚好掉到告警线以下，但那是用行距换一个绿色，数据一变就翻回来，所以不压。 */
+.figure { display: grid; justify-items: start; gap: 6px; margin-bottom: 16px; }
+.figure-label { margin: 0; color: var(--muted); font-size: 13px; line-height: 1.3; }
+.figure-value {
+  margin: 0;
+  font-size: 40px;
+  font-weight: 400;
+  line-height: 1;
+  letter-spacing: -.03em;
+  font-variant-numeric: tabular-nums;
+}
+/* 说明只有两行的话它就永远是注脚；fit-content 的宽度跟着行栅栏走，不会挤成一条细缝。 */
+.figure-note { margin: 0; color: var(--muted); font-size: 12px; line-height: 1.45; }
+
+.list-block { display: grid; gap: 10px; }
+.list { display: grid; }
+.list-row {
+  display: grid;
+  gap: 3px 16px;
+  padding: 13px 8px;
+  border-bottom: 1px solid var(--rule);
+}
+.list-row:last-child { border-bottom: 0; }
+/* 一行里唯一能点的是它的「展开全文」，所以整行跟着亮，点的范围才不只是那几个字。 */
+.list-row:hover { background: var(--surface); }
+.list-row:focus-within { background: var(--surface); }
+
+/* 对话：左边时间，右边他的原话、她的回复，最后是那一颗「展开全文」。
+   按钮原先挂在左栏时间下面：正文被夹掉一段，按钮却站在时间底下，读起来像上一行的残留。
+   现在它贴着正文块的末尾、右对齐：被夹的是正文，能点开正文的也就在正文后面。
+   行高 156 是下限，不是每一行的高度。1440 实测：正文块 68（他一行、她两行）到 135
+   （他一行、她被夹三行，加那颗 44 的展开按钮），加上下 13px 留白与 1px 分隔线 = 95 到 162。
+   156 落在中间，所以读得完的那九条是 156，真被夹满、带「展开全文」的那三条自己长到 162。
+   于是翻页时页高会差十几到二十几像素，这是被夹满的行撑出来的，不按条数累加；
+   182 那种「一行对话只写两行字、却留半屏白」才是更贵的错。 */
+.talk-row { grid-template-columns: 104px minmax(0, 1fr); align-items: start; align-content: start; min-height: 156px; }
+.talk-meta { display: grid; gap: 6px; align-content: start; justify-items: start; }
+.talk-time { margin: 0; color: var(--muted); font-size: 12px; line-height: 1.45; font-variant-numeric: tabular-nums; }
+.talk-toggle {
+  justify-self: end;
+  min-height: 44px;
+  padding: 0;
+  background: transparent;
+  color: var(--accent);
+  font-size: 12px;
+  line-height: 1.3;
+  text-align: right;
+}
+.talk-toggle:hover { text-decoration: underline; }
+.talk-body { display: grid; gap: 2px; min-width: 0; }
+/* 她的回复常常是几段：换行照原样留着，夹到三行，剩下的交给那一颗「展开全文」。 */
+.talk-row .row-copy p {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+  white-space: pre-line;
+}
+.talk-row .row-copy.reply p { -webkit-line-clamp: 3; }
+.talk-row .row-copy.is-open p { display: block; overflow: visible; -webkit-line-clamp: unset; }
+/* 量「有没有被裁掉」用的临时状态：按展开后的样子排一遍，量完 JS 立刻摘掉。 */
+.talk-row .row-copy p.is-measuring { display: block; overflow: visible; -webkit-line-clamp: unset; }
+
+/* 待跟进：正文占满，中间是它属于哪一类（服务端的 kind），约定时间贴右。
+   行高 62px：一条记录一指头点得中，十行才把这一屏撑成一张真表，而不是一列小字。 */
+.threads-row { grid-template-columns: minmax(0, 1fr) 64px 72px; align-items: baseline; align-content: center; min-height: 62px; column-gap: 16px; }
+.list-text { margin: 0; min-width: 0; line-height: 1.5; overflow-wrap: anywhere; }
+.list-kind { color: var(--faint); font-size: 12px; text-align: right; white-space: nowrap; }
+.list-when { color: var(--muted); font-size: 12px; text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
+
+/* 分类行只折行，永不横向滚动：滚动条不出现时没有任何线索告诉你右边还有一颗。
+   390 上五颗一共要 426px、只有 358px（实测），折成两排、行距就是这个 8px。 */
+.chip-row { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 10px; }
+.chip-row[hidden] { display: none; }
+.filter-chip[hidden] { display: none; }
+.pager-label { margin: 0; align-self: center; color: var(--muted); font-size: 13px; font-variant-numeric: tabular-nums; }
+/* 翻页文案的两句写法：宽屏那句与窄屏那句都写进 DOM，由下面的断点挑一句（见 app.js:186-196）。
+   默认只显示宽屏那句，所以没写窄屏句的屏，DOM 里也没有第二个 span。 */
+.pager-label-short { display: none; }
+
+.state-block { display: grid; gap: 10px; justify-items: start; }
+.state-block > .loading-copy, .state-block > .empty-copy, .state-block > .error-copy { margin: 0; }
+.state-retry {
+  min-height: 44px;
+  padding: 0 16px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-control);
+  background: var(--ground);
+  color: var(--text);
+  font-size: 13px;
+  transition: background-color .15s ease, border-color .15s ease;
+}
+.state-retry:hover { background: var(--surface); border-color: var(--control); }
+.skeleton { display: grid; gap: 8px; width: 100%; }
+.skeleton-row { display: block; height: 88px; border-radius: 13px; background: var(--surface); }
+
+@media (max-width: 767px) {
+  /* 手机上图栏更窄，但三层还是三层：只把数字降一档，标签与说明保持原样。 */
+  .figure-value { font-size: 32px; }
+  /* 两列挤成一列：时间独占一行，正文整宽，第一行数据才留在首屏。
+     行高下限同样要把「展开全文」算进去。390 实测：时间 17 + 间距 2 + 正文 68~156 +
+     上下留白 24 + 分隔线 1 = 112 到 200。180 落在中间：他一行字的十条是 180，
+     他两行字、她又带「展开全文」的那两条自己长到 200。 */
+  .talk-row { grid-template-columns: minmax(0, 1fr); gap: 2px; padding: 12px 6px; min-height: 180px; }
+  /* 手机上三列放不下：分类让位，正文与约定时间留下。 */
+  .threads-row { grid-template-columns: minmax(0, 1fr) auto; }
+  .list-kind { display: none; }
+  .skeleton-row { height: 76px; }
+  /* 390 上一行只有 358px：两颗按钮各 92 加两道 8px 缝，留给翻页文案的只剩 158px，
+     而末页的「第 97–100 / 100（本机上限）」要 170px，文案会被挤到第二行，翻页器从一行变两行。
+     按钮收到 76（字 39px + 32px 内边距仍装得下「上一页」，高度还是 44），文案回到一行。 */
+  .pager-button { min-width: 76px; }
+  /* 一行只剩 190px：审计那句「第 1–25 轮 / 共 175 轮（本机窗口 200 行）」要 243px，
+     连去掉「共」与「200 行」都还有 193px（三位数区间实测，翻页器当场从 44 长到 96）。
+     这里换短写，形状就是对话/待跟进已验过的那一句（最坏 177px）；「本机窗口」这个限定词
+     留着：175 是窗口里的轮数，不是全部历史（图栏那行小字已经把 200 行写在上面）。 */
+  .pager-label-wide { display: none; }
+  .pager-label-short { display: inline; }
+}
+
+/* ---- P3 · 审计 -------------------------------------------------------------------
+   200 行折成一轮一行：一行 = 时间 / 类型 / 一句话 / 这一轮动了几次工具、花了多久。
+   折轮不在这份 CSS 里也不在 views/audit.js 里重算，主键是 stageDetail.turnTrace
+   （web/audit-view.js:289-331），本屏只引用产品那份 EchoAuditView。
+   行不是卡片，是一条条用一根浅线分开的记录，一百多行的时候，一百多个圆角盒子就是噪音。
+   四列对齐成一张表：数字列右对齐、tabular，换行时秒与毫秒不会跟着跳。 */
+.au-row { padding: 0; gap: 0; }
+.au-toggle {
+  display: grid;
+  grid-template-columns: 104px 52px minmax(0, 1fr) auto;
+  align-items: baseline;
+  gap: 0 14px;
+  width: 100%;
+  min-height: 52px;
+  padding: 14px 8px;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+}
+.au-time { color: var(--muted); font-size: 13px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.au-kind { color: var(--faint); font-size: 13px; white-space: nowrap; }
+.au-gist { min-width: 0; overflow: hidden; font-size: 14px; line-height: 1.45; text-overflow: ellipsis; white-space: nowrap; }
+.au-count { justify-self: end; color: var(--muted); font-size: 13px; font-variant-numeric: tabular-nums; text-align: right; white-space: nowrap; }
+.au-row.is-open { background: var(--surface); }
+/* 详情缩进到「一句话」那一列的左边线上：读起来是这一行的注脚，不是另一段内容。 */
+.au-detail { display: grid; gap: 4px; padding: 2px 8px 18px 192px; }
+.au-detail[hidden] { display: none; }
+.au-detail-label { margin: 8px 0 0; color: var(--faint); font-size: 12px; line-height: 1.3; }
+.au-tools { display: flex; flex-wrap: wrap; gap: 6px 22px; margin: 0; padding: 0; list-style: none; }
+.au-tool { display: inline-flex; align-items: baseline; gap: 6px; }
+.au-tool-human { font-size: 13px; }
+.au-tool-raw { color: var(--faint); font-size: 12px; }
+.au-copy { margin: 0; max-width: 68ch; line-height: 1.55; overflow-wrap: anywhere; white-space: pre-line; }
+.au-none { margin: 0; color: var(--muted); font-size: 13px; }
+.au-inject { margin: 0; color: var(--muted); font-size: 13px; font-variant-numeric: tabular-nums; }
+
+@media (max-width: 767px) {
+  /* 手机上四列放不下：第一行只留时间、类型与那一格数字，一句话整宽落在第二行。
+     行高仍要一指头点得中（56 起步），第一行数据才留在首屏。 */
+  .au-toggle {
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    grid-template-areas: "time kind count" "gist gist gist";
+    gap: 2px 10px;
+    min-height: 56px;
+    padding: 12px 6px;
+  }
+  .au-time { grid-area: time; }
+  .au-kind { grid-area: kind; }
+  .au-count { grid-area: count; }
+  .au-gist { grid-area: gist; white-space: normal; overflow-wrap: anywhere; }
+  .au-detail { padding: 2px 6px 16px; }
+}
+
+
+/* ---- P3.5 · 审计第 1 步：行尾的异常标记（慢 / 失败）---------------------------
+   只印文字，不用色块、不用 emoji（app-screens.md §13）。慢用灰（--faint）、失败用红
+   （--negative）：「红色是信号不是纹理」，本窗口一屏可能有十一条慢轮，十一条红字读起来
+   只是噪声，所以红只留给唯一那条真失败。标记与「次数·耗时」同一格，数字列不跟着跳。 */
+.au-flag { color: var(--faint); font-size: 12px; white-space: nowrap; }
+.au-flag.is-bad { color: var(--negative); }
+
+
+/* ---- P3.5 · 审计第 2 步：小时组头 / 一排 chips / L2「这一轮」 ---------------------
+   组头是这一屏唯一「不用点就能看到那一小时她干了多少」的地方，所以它是一行字，不是卡片：
+   12px 灰、与列表同一条左线、上面留 18px：段与段靠留白分开，不靠线（app-screens §11）。
+   chips 那一排沿用壳里的 .chip-row（app.js:258-297，对话/待跟进同款），这里只管它与
+   主指标之间的那点距离：主指标 16 + 这一排 10，下面就是列表。
+   主指标那颗数字是 button（点它 = 点「需要看」），所以这里只把 button 的默认外观脱掉，
+   字号/字重/字距全部沿用 .figure-value，屏上仍然是唯一那个 40px 的数字。 */
+.au-chips { margin: 0 0 10px; }
+.au-chips .chip-row { margin-bottom: 0; }
+.figure-button { padding: 0; background: transparent; color: inherit; text-align: left; }
+.figure-button:hover { color: var(--accent); }
+
+.au-hour {
+  margin: 0;
+  padding: 18px 8px 6px;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.3;
+  font-variant-numeric: tabular-nums;
+}
+.au-list > .au-hour:first-child { padding-top: 2px; }
+
+/* L2 顶上那一行：时间跨度 / 行数 / 来源计数。数字等宽，三个字段之间用「 · 」分开 ——
+   换行时不会把「子代理 4」拆成两半。 */
+.au-meta {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.45;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+/* 阶段链是一行文字，不是流程图（§4「九阶段流程图 · 不做」）。 */
+.au-chain { margin: 0; font-size: 13px; line-height: 1.45; overflow-wrap: anywhere; }
+
+/* 行清单：每一行是一颗 button（第三层在第 3 步，现在标 aria-disabled 并给一句说明）。
+   44px 的下限是触控区，不为了「更紧凑」压到 36，这一行是要用手指点的。 */
+.au-rows { display: grid; margin: 2px 0 0; }
+.au-rowitem {
+  display: grid;
+  grid-template-columns: 72px 112px minmax(0, 1fr) auto;
+  align-items: baseline;
+  gap: 0 12px;
+  width: 100%;
+  min-height: 44px;
+  padding: 8px;
+  border-radius: 10px;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+}
+/* 展开区本身在 --surface 上，所以这一行亮起来用的是更亮的那一层，不是再叠一层灰。 */
+.au-rowitem:hover { background: var(--ground); }
+.au-rowtime { color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.au-rowhuman { font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.au-rowraw { min-width: 0; color: var(--faint); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.au-rowmeter { justify-self: end; color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; text-align: right; white-space: nowrap; }
+/* 第 3 步的占位说明：只在按到某一行之后出现，一行字、不占位、不装成面板。 */
+.au-rowhint { margin: 4px 0 0; color: var(--faint); font-size: 12px; line-height: 1.45; }
+.au-rowhint[hidden] { display: none; }
+
+@media (max-width: 767px) {
+  /* 390 上四格放不下：时钟 + 人话名 + 那格数字一行，原始名整宽落在第二行（§6 第 5 条的降级顺序）。
+     早先原始名只占 64px 那一格、靠 ellipsis 收尾：`same_turn_emotion` 要 115px 而只剩 64px，
+     屏上写着 `same_tu…`。那是丢信息，不是省略。现在 raw 独占第二行（实测 330px），名字全在。
+     行高没变（55.5px）：三格都还在原来那两行里，只是数字从第二行右端挪到第一行右端。 */
+  .au-rowitem {
+    grid-template-columns: 64px minmax(0, 1fr) auto;
+    grid-template-areas: "time human meter" "raw raw raw";
+    row-gap: 2px;
+  }
+  .au-rowtime { grid-area: time; }
+  .au-rowhuman { grid-area: human; }
+  .au-rowraw { grid-area: raw; }
+  .au-rowmeter { grid-area: meter; justify-self: end; }
+}
+
+
+/* ---- P4F · 768–1180：侧栏还在，内容列从 528px 起 ----------------------------------
+   详情区缩进 192px（对齐「一句话」那一列的左线：8 内边距 + 104 时间 + 14 + 52 类型 + 14），
+   行清单再排四列（72 / 112 / 1fr / auto，数值列 nowrap）。两样相加的最小宽度实测 618.16px：
+   768 时内容列只有 528，`.au-list` 这一格被内容顶到 618，整页横向溢出 70px
+   （改前实测 scrollWidth 838 / innerWidth 768；HEAD 同样如此，不是懒渲染带来的）。
+   这一段改用 390 那套两行式：缩进收到 16px（读起来仍是上面那一行的注脚），行清单改成
+   「时间 + 工具名」/「参数摘要 + 右对齐数值」。数值列留在 auto 轨道，摘要列 minmax(0, 1fr)
+   可以压到 0，所以内容再长也撑不宽这一格：这里既不用横向滚动，也不用 overflow-x: hidden
+   把它切掉。
+   上界是 1180 而不是 1100：1100 是这段自己定的数，侧栏那一档压到 1180 才收（见上面 1180 那条），
+   1101–1180 之间因此还在跑宽版式。那一档本窗口这一份数据没顶出去（实测 1101/1180 两档
+   scrollWidth === innerWidth），可四列里数值那格是 auto + nowrap，行的最小宽度没有上界，
+   换一份「耗时 · 输入 2,000 字（写入即截断） · 明细 12 键」就可能顶出去。上界对齐到 1180 之后，
+   这段的最小宽度由 auto 那格以外的东西决定（时间 72 + 间隙 + 摘要列可压到 0），不再有理论口。
+   1181 是第一档跑宽版式的窗口：侧栏回到 224，main-content 957，workspace = min(1100, 957 − 48)
+   = 909；详情按原版式缩进 192、右内边距 8，行清单 709，四列实测 72 / 112 / 352.89 / 120.11，
+   raw 还剩 352，塞得下。1440 的缩进与四列一个像素不动。 */
+@media (min-width: 768px) and (max-width: 1180px) {
+  .au-detail { padding: 2px 8px 16px 16px; }
+  .au-rowitem {
+    grid-template-columns: 72px minmax(0, 1fr) auto;
+    grid-template-areas: "time human human" "raw raw meter";
+    row-gap: 2px;
+  }
+  .au-rowtime { grid-area: time; }
+  .au-rowhuman { grid-area: human; }
+  .au-rowraw { grid-area: raw; }
+  .au-rowmeter { grid-area: meter; justify-self: end; }
+}
+
+/* 两行式（≤1180）里工具名一个字母都不省：raw 允许折行，不裁切、不省略。
+   宽版式那一档（≥1181）仍是 nowrap + ellipsis：那里它只是一列 353px 的注脚，
+   真折起来会把四列的基线撑歪；两行式里它本来就是一整行，折了只是这一行变高。
+   `anywhere` 是为了 `same_turn_emotion` 这种连字符/下划线长词：容器再窄也只是多一行。 */
+@media (max-width: 1180px) {
+  .au-rowraw {
+    overflow: visible;
+    white-space: normal;
+    overflow-wrap: anywhere;
+    text-overflow: clip;
+  }
+}
+
+/* ---- P5A · 审计第 3 步：L3 逐行字段表 -------------------------------------------
+   这一层是给排障看的：21 个键一行不少地摊在那一行下面，键名在左（12px 灰、等宽数字），
+   值在右（13px，长文本按段落读出，靠换行不靠横滚）。它挂在行按钮下面而不是抽屉里：
+   三档是同一套 DOM，390 只是把两列折成一列（键在上、值在下），滚动位置天然保持。
+   缩进到「原始名」那一列的右边线（92px = 行按钮 8 + 时间列 72 + 缝 12），读起来是
+   这一行的注脚，不是另一段内容。左边一根 1px 线是「从属」的唯一记号：不加卡片、不加底色，
+   与 L1/L2 同一套「留白与线，不用盒子」。 */
+.au-l3row { display: grid; }
+.au-l3row.is-open > .au-rowitem { background: var(--ground); }
+.au-l3 {
+  display: grid;
+  gap: 2px 0;
+  margin: 0 8px 10px 92px;
+  padding: 6px 10px 10px 14px;
+  border-left: 1px solid var(--rule);
+}
+/* 焦点落在这一块上时给一圈细线就好：它是「整张表」的焦点，不是某个控件的焦点。 */
+.au-l3:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.au-l3-field {
+  display: grid;
+  /* 152px 是量出来的：最长的键名 emotionPackStructured（22 字符 @13px ≈ 145px）要在一行里放得下，
+     否则那个键会断成「emotionPackStructur / ed」两行，读起来像两个字段。 */
+  grid-template-columns: 152px minmax(0, 1fr);
+  gap: 0 14px;
+  padding: 3px 0;
+  border-top: 1px solid var(--rule);
+}
+.au-l3-field[data-field="timestamp"] { border-top: 0; padding-top: 0; }
+.au-l3-key {
+  color: var(--faint);
+  font-size: 13px;
+  line-height: 1.5;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+.au-l3-val { margin: 0; min-width: 0; font-size: 14px; line-height: 1.5; }
+.au-l3-num { font-variant-numeric: tabular-nums; }
+.au-l3-text { display: block; white-space: pre-line; overflow-wrap: anywhere; }
+.au-l3-muted { color: var(--muted); }
+/* 截断标注：一句话，13px 灰，跟在值下面；不自造色块，也不装成警告。
+   13px 而不是 12px：它是**要读的句子**（「写入即截断」「light 裁 600」后面还带着出处），
+   不是微标签；顺带把静态文本口径里的「12px 占比」压回 0.25 以下（实测见 p5a 报告）。 */
+.au-l3-note { margin: 2px 0 0; color: var(--faint); font-size: 13px; line-height: 1.45; }
+/* JSON 字段的键值对：比字段那一层再缩一格，键列 96px，长值同样折行。 */
+.au-l3-sub { display: grid; grid-template-columns: 96px minmax(0, 1fr); gap: 0 10px; margin: 0; }
+.au-l3-subkey { color: var(--faint); font-size: 13px; line-height: 1.5; overflow-wrap: anywhere; }
+.au-l3-subval { margin: 0; font-size: 14px; line-height: 1.5; overflow-wrap: anywhere; white-space: pre-line; }
+
+@media (max-width: 1180px) {
+  /* 两行式那一档（≤1180）里详情列更窄：键列收到 128px，值列让出宽度。
+     同时取消那 92px 缩进：它在宽屏上是「对齐原始名那一列」，可两行式里原始名已经挪到
+     第二行、不再是一列，再缩只会让字段表悬在半空、和上面的行对不上。 */
+  .au-l3 { margin-left: 0; }
+  .au-l3-field { grid-template-columns: 128px minmax(0, 1fr); }
+}
+
+@media (max-width: 767px) {
+  /* 390：一列（键在上 13px、值在下）。margin 收窄，缩进只留一根线。 */
+  .au-l3 { margin: 0 4px 8px; padding: 4px 8px 8px 10px; }
+  .au-l3-field { grid-template-columns: minmax(0, 1fr); gap: 0; padding: 4px 0; }
+  .au-l3-key { padding-top: 4px; }
+  .au-l3-sub { grid-template-columns: minmax(0, 1fr); gap: 0; }
+  .au-l3-subkey { padding-top: 3px; }
+}
+/* ---- P6 · 步骤账本：一轮 = 若干步，一步 = 一行（六格）---------------------------------
+   序号 / 时钟 / 阶段名(+原始名) / 一句话 / 耗时 / 标记。
+   为什么是六格而不是一条链：这一屏要回答「她分了几步、每步在干什么、哪步慢或坏了」，
+   而顺序永远是时间顺序（`turn.rows` 已经是 timestamp 升序），所以序号就是位置，不需要图。
+   1440 六格一行；1180 以下一句话整宽落第二行：内容列 528px 塞不下六格，P4F 那条
+   「四列最小宽度 618px」记的是同一笔账。
+   序号 12px 灰、右对齐：屏上唯一 >=24px 的数字仍是 L0 那个「需要看」，这里不许抢。 */
+.au-flow-head {
+  margin: 2px 0 0;
+  color: var(--faint);
+  font-size: 12px;
+  line-height: 1.4;
+  font-variant-numeric: tabular-nums;
+}
+.au-stepno {
+  color: var(--faint);
+  font-size: 12px;
+  line-height: 1.5;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  white-space: nowrap;
+}
+.au-stepwhat {
+  min-width: 0;
+  font-size: 13px;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+/* 标记只印字，一个色块都不用：慢 / 又跑了一次 / 轮外 用 --faint，失败用 --negative
+   （与 L1 的 .au-flag 同一套口径：红色是信号不是纹理，本窗口只有 3 行）。 */
+.au-stepflag {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 6px;
+  justify-self: end;
+  color: var(--faint);
+  font-size: 12px;
+  line-height: 1.5;
+  white-space: nowrap;
+}
+.au-stepflag-item.is-bad { color: var(--negative); }
+.au-stepflag-why { color: var(--faint); }
+/* 原始名从一格挪成阶段名的后缀（宽版式才有位置）：两个名字之间留 6px，不加分隔符。 */
+.au-rowhuman .au-rowraw { margin-left: 0; }
+
+/* 1440 那一档：六格一行。列宽是量的：序号 24（两位数）、时钟 66（"15:21:46" @12px ≈ 62）、
+   阶段名 172（最长「结构化产出」+ 6px + `structured_output` ≈ 171）、一句话 minmax(0, 1fr)
+   （约 464px ≈ 35 字，40 字这一档会折一行）、耗时 68（"121 秒" / "1.1 秒"）、标记 150。
+   标记为什么给死 150 而不是 auto：第 2 步起标记会到「并行（与另一路同起）失败（没留原因）」
+   那么长，auto 会把它自己撑到 300px、把一句话挤到 292px（实测一句话当场折成三行）。
+   150px 里两行放得下，行高仍是 44，一句话稳在 464px。 */
+@media (min-width: 1181px) {
+  .au-rowitem {
+    grid-template-columns: 24px 66px 172px minmax(0, 1fr) 68px 150px;
+    gap: 0 8px;
+  }
+  .au-stepno { grid-column: 1; }
+  .au-rowtime { grid-column: 2; }
+  .au-rowhuman { grid-column: 3; }
+  .au-stepwhat { grid-column: 4; }
+  .au-rowmeter { grid-column: 5; }
+  .au-stepflag { grid-column: 6; max-width: 150px; }
+}
+
+@media (max-width: 1180px) {
+  /* 两行式：第一行 序号 | 时钟 | 阶段名 | 耗时 | 标记，第二行一句话整宽。
+     这一档放弃原始名（它在 L3 里，一次点击就够）：528px 里再挤一列就是 P4F 记过的 70px 横向溢出。 */
+  .au-rowitem {
+    grid-template-columns: 20px 62px minmax(0, 1fr) 64px auto;
+    grid-template-areas: "no time name meter flag" "what what what what what";
+    gap: 0 8px;
+    row-gap: 2px;
+  }
+  .au-stepno { grid-area: no; }
+  .au-rowtime { grid-area: time; }
+  .au-rowhuman { grid-area: name; }
+  .au-rowmeter { grid-area: meter; }
+  .au-stepflag { grid-area: flag; }
+  .au-stepwhat { grid-area: what; }
+  .au-rowhuman .au-rowraw { display: none; }
+}
+
+@media (max-width: 767px) {
+  /* 390：两行式收成三行，句子一行、标记另起一行。
+     标记不许留在第一行：第一行右端被「并行 失败（没留原因）」占掉约 140px 时，阶段名那一列
+     只剩 56px，「情绪打分」当场被省略号切成「情绪⋯」（实测截图上就是这个）。
+     标记独占一行之后阶段名拿 1fr（实测约 200px），名字一个不省，也不必给 ellipsis。
+     一句话仍整宽、允许折行、不截断（它是内容，不是标签）。 */
+  .au-rowitem {
+    grid-template-columns: 18px 52px minmax(0, 1fr) auto;
+    grid-template-areas: "no time name meter" "what what what what" "flag flag flag flag";
+    min-height: 56px;
+    padding: 10px 6px;
+  }
+  .au-stepno { grid-area: no; }
+  .au-rowtime { grid-area: time; }
+  .au-rowhuman { grid-area: name; white-space: normal; text-overflow: clip; }
+  .au-rowmeter { grid-area: meter; }
+  .au-stepwhat { grid-area: what; }
+  .au-stepflag { grid-area: flag; justify-self: start; }
+}
+
+/* 全轮外轮（后台记账）的标题就写在原来「这一轮经过」那个位置，继承 .au-detail-label 的上边距：
+   它上面是「这一轮没有说话。」这类小字，标题与它之间要有那 8px，不然两句粘成一句。 */
+.au-flow-head.is-outside { margin-top: 8px; }
+
+/* ---- P6C · 三档收口 ----------------------------------------------------------------
+   ① 窄档（≤1180）把原始名收进 L3：屏上只留人话名，这一行小字告诉读的人去哪儿找。
+      宽版式（≥1181）里原始名就在阶段名后面，这句提示一个字都不印（display:none，
+      但留着 DOM：两档是同一套结构，切档不重建）。
+   ② 病态轮护栏那颗「还有 N 步」：它是真按钮（Tab 停得下、Enter 展开），
+      44px 起（触控下限），与步骤行同一条左线；焦点圈沿用全局 :focus-visible 那一圈 3px。 */
+.au-flow-hint {
+  margin: 2px 0 0;
+  color: var(--faint);
+  font-size: 12px;
+  line-height: 1.4;
+}
+@media (min-width: 1181px) {
+  .au-flow-hint { display: none; }
+}
+.au-more {
+  justify-self: start;
+  min-height: 44px;
+  margin: 2px 0 0;
+  padding: 8px 12px;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.4;
+  text-align: left;
+}
+.au-more:hover { background: var(--ground); color: var(--text); }
+
+/* ---- 一轮的整页（#/round/<key>）----------------------------------------------------
+   列表里展开是"快速看一眼"，整页是把宽度还给图：去掉 L2 的 192px 缩进，正文吃满内容列。
+   节点仍是 .au-rowitem（L3 的开关），这里只动容器的边距，不动节点语义。 */
+#view-round .au-detail { padding-left: 0; }
+#view-round .au-flow-head { margin-top: 2px; }
+.round-title { margin: 18px 0 10px; font-size: 20px; font-weight: 500; letter-spacing: -.01em; }
+.round-body { min-width: 0; }
+.au-open { display: inline-block; margin: 0 0 10px; font-size: 12px; color: var(--muted); }
+.au-open:hover { color: var(--ink); }
+.au-back { display: inline-block; margin: 14px 0 2px; font-size: 12px; color: var(--muted); }
+.au-back:hover { color: var(--ink); }
+/* ---- 流程图的图形层（#/audit 展开与 #/round）------------------------------------
+   节点仍是 .au-rowitem（L3 的开关），这里只加四层装饰：轨道点 / 时长条 / 刻度轨 / 传参缝。
+   横轴是**步骤序号**，不是时间：单轮 latency 之和 ÷ 时间跨度 = 0.01，按时间比例画全是 1px 噪声。
+   条长按 log10 固定域（1 毫秒 → 2 分钟），真实数值仍在 .au-rowmeter 里；最慢一步有条帽。 */
+.au-l3row { position: relative; padding-left: 20px; }
+.au-rail { position: absolute; left: 7px; top: 0; bottom: 0; width: 1px; background: var(--rule); }
+.au-rail-dot { position: absolute; left: -3px; top: 22px; width: 7px; height: 7px; border-radius: 50%; background: var(--accent); }
+.au-rail-dot.is-bad { background: var(--negative); }
+.au-bar { display: none; }
+.au-seam { margin: 2px 0 2px 26px; font-size: 12px; color: var(--muted); }
+.au-fork { margin: 7px 0 2px 26px; font-size: 12px; color: var(--faint); }
+/* 动效只表达"先后"：每步按序淡入，并行支同延迟（同一个 --i）。reduced-motion 直接终态。 */
+.au-l3row { animation: au-step-in .18s ease-out both; animation-delay: calc(var(--i, 0) * 80ms); }
+@keyframes au-step-in { from { opacity: 0; transform: translateY(3px); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) { .au-l3row { animation: none; } }
+@media (max-width: 767px) { .au-rail { display: none; } .au-l3row { padding-left: 0; } }
+/* 710 以下不放条与刻度轨：两行式里那 92px 会把一句话挤回省略号，得不偿失。 */
+@media (min-width: 1181px) {
+  .au-bar { display: inline-flex; align-items: center; margin-left: 8px; }
+  .au-bar-track { width: 92px; height: 6px; border-radius: 3px; background: var(--rule); overflow: hidden; }
+  .au-bar-fill { display: block; height: 100%; border-radius: 3px; background: var(--accent); }
+  .au-bar-fill.is-bad { background: var(--negative); }
+  /* 端帽用真实元素画，不用 inset shadow：静止态元素带阴影是这一套风格的禁区（lint 的 [shadow]）。 */
+  .au-bar-fill.is-max { position: relative; }
+  .au-bar-fill.is-max::after { content: ""; position: absolute; right: 0; top: 0; bottom: 0; width: 2px; background: var(--ink); }
+  .au-axis { margin: 4px 0 6px 20px; font-size: 11px; color: var(--faint); }
+}
+
+/* ==== 一轮的流程图（P9A）：节点 + 连线 + 真实墙钟时间轴 ==============================
+   图形在 SVG 里画（views/round.js 算位置），这里只管外观与状态。
+   三条口径：① 静止态只有「量是真的」那条边印字，其余全在浮层；
+            ② 颜色只花在数据上（时间轴的段）+ 状态（失败），节点本身是纸；
+            ③ 不造假数据：没有耗时/没量就印 api.missing，图上不留空框。 */
+.round-title + .round-meta { margin: -4px 0 14px; color: var(--muted); font-size: 13px; line-height: 1.5; }
+.rg-panel {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+  background: var(--ground);
+  padding: 14px 18px 16px;
+  margin-bottom: 14px;
+}
+.rg-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px 16px; flex-wrap: wrap; }
+.rg-head-text { min-width: 0; flex: 1 1 260px; }
+.rg-h { margin: 0; font-size: 15px; font-weight: 500; letter-spacing: 0; }
+.rg-facts { margin: 3px 0 0; color: var(--muted); font-size: 13px; line-height: 1.45; }
+.rg-hint { margin: 0; color: var(--faint); font-size: 13px; line-height: 1.45; }
+.rg-canvas { margin-top: 8px; min-width: 0; }
+.rg-none { margin: 10px 0 0; color: var(--muted); font-size: 13px; }
+
+/* 图之上：他说了什么 / 她说了什么（正文，不靠悬停、不靠展开） */
+.round-said {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+  background: var(--ground);
+  padding: 14px 18px 16px;
+  margin-bottom: 14px;
+}
+.round-said-one + .round-said-one { margin-top: 12px; }
+.round-said-label { margin: 0; color: var(--faint); font-size: 13px; }
+.round-said-text { margin: 4px 0 0; color: var(--text); font-size: 15px; line-height: 1.6; white-space: pre-line; overflow-wrap: anywhere; }
+.round-said-none { margin: 0; color: var(--muted); font-size: 14px; }
+.round-said-more {
+  margin-top: 6px;
+  padding: 4px 12px;
+  border: 1px solid var(--control);
+  border-radius: var(--radius-control);
+  background: var(--ground);
+  color: var(--text);
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+.round-said-more:hover { background: var(--surface); }
+.round-said-more:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+/* 图：节点是纸（白底、1px 边、10 圆角），线是灰的，只有状态与选中上色 */
+.rg-svg { display: block; font-family: var(--sans); overflow: visible; }
+.rg-svg text { pointer-events: none; }
+.rg-node { cursor: pointer; outline: none; }
+.rg-box { fill: var(--raised); stroke: var(--border); stroke-width: 1; transition: stroke .14s ease-out, fill .14s ease-out; }
+.rg-port { fill: var(--control); }
+.rg-ring { fill: none; stroke: transparent; stroke-width: 2; }
+.rg-chip { fill: var(--pill-neutral-bg); }
+.rg-chip-text { fill: var(--pill-neutral-ink); font-size: 11px; font-variant-numeric: tabular-nums; }
+.rg-name { fill: var(--text); font-size: 13px; }
+.rg-stat { fill: var(--muted); font-size: 13px; }
+.rg-stat.is-bad { fill: var(--negative); }
+.rg-stat.is-say { fill: var(--text); }
+.rg-node:hover .rg-box { fill: var(--surface); stroke: var(--control); }
+.rg-node.is-active .rg-box { stroke: var(--accent); fill: var(--surface); }
+.rg-node.is-bad .rg-box { stroke: var(--negative); }
+.rg-node.is-out .rg-box { stroke: var(--control); stroke-dasharray: 4 3; }
+.rg-node:focus .rg-ring, .rg-node:focus-visible .rg-ring { stroke: var(--accent); }
+.rg-seg:focus .rg-ring, .rg-edge:focus .rg-ring { stroke: var(--accent); }
+
+.rg-edge { cursor: pointer; outline: none; }
+.rg-hit { fill: none; stroke: var(--control); stroke-width: 16; stroke-opacity: 0; pointer-events: stroke; }
+.rg-line {
+  fill: none;
+  /* 连线就是"流程"这件事本身 —— 它一直是数据色。主色 1.25px、静止态 0.55 透明；
+     悬停/选中不换色，只把透明度和线宽提上去。节点边框保持中性，只有失败那步用 --negative。 */
+  stroke: var(--accent);
+  stroke-opacity: .55;
+  stroke-width: 1.25;
+  stroke-linejoin: round;
+  stroke-dasharray: var(--rg-len, 400);
+  stroke-dashoffset: var(--rg-len, 400);
+  opacity: 0;
+  transition: stroke-dashoffset .42s ease-out var(--rg-delay, 0ms), opacity .18s linear var(--rg-delay, 0ms), stroke-opacity .14s ease-out, stroke-width .14s ease-out;
+}
+.rg-head { fill: var(--accent); fill-opacity: .55; opacity: 0; transition: opacity .16s linear var(--rg-delay, 0ms), fill-opacity .14s ease-out; }
+.rg-edge.is-out .rg-line { stroke-dasharray: 5 4; stroke-dashoffset: 0; stroke-opacity: .4; }
+.is-drawn .rg-line { stroke-dashoffset: 0; opacity: 1; }
+.is-drawn .rg-head { opacity: 1; }
+.rg-edge:hover .rg-line, .rg-edge.is-active .rg-line { stroke-opacity: 1; stroke-width: 2; }
+.rg-edge:hover .rg-head, .rg-edge.is-active .rg-head { fill-opacity: 1; }
+.rg-tag-lead { fill: none; stroke: var(--control); stroke-width: 1; }
+.rg-edge-label { fill: var(--muted); font-size: 13px; font-variant-numeric: tabular-nums; }
+
+/* 节点与线按序淡入：并行两臂同一拍（--rg-hop 把同一步的两条边压到同一个延迟） */
+.rg-node { opacity: 0; transition: opacity .22s ease-out var(--rg-node-delay, 0ms); }
+.is-drawn .rg-node { opacity: 1; }
+.is-still .rg-node, .is-still .rg-line, .is-still .rg-head { transition: none; }
+
+/* 时间轴：两条同宽的带，各自真实比例；段最小 3px，时长印在段里或挂在引线下 */
+.rg-map { overflow: visible; }
+.rg-track { fill: var(--pill-neutral-bg); }
+.rg-band { fill: var(--muted); font-size: 13px; }
+.rg-note { fill: var(--muted); font-size: 13px; font-variant-numeric: tabular-nums; }
+.rg-tick { fill: var(--faint); font-size: 13px; font-variant-numeric: tabular-nums; }
+.rg-flag { font-size: 13px; }
+.rg-flag.is-slow { fill: var(--muted); }
+.rg-flag.is-bad { fill: var(--negative); }
+.rg-leader { fill: none; stroke: var(--control); stroke-width: 1; }
+.rg-lead-text { fill: var(--muted); font-size: 13px; font-variant-numeric: tabular-nums; }
+.rg-seg { cursor: pointer; outline: none; }
+.rg-seg-box { fill: var(--accent); transition: fill .14s ease-out, opacity .14s ease-out; }
+.rg-seg.is-arm .rg-seg-box { opacity: .55; }
+.rg-seg.is-out .rg-seg-box { fill: var(--control); }
+.rg-seg.is-bad .rg-seg-box { fill: var(--negative); }
+.rg-seg.is-slow .rg-seg-box { fill: var(--text); }
+.rg-seg:hover .rg-seg-box, .rg-seg.is-active .rg-seg-box { opacity: 1; fill: var(--text); }
+.rg-seg.is-bad:hover .rg-seg-box, .rg-seg.is-bad.is-active .rg-seg-box { fill: var(--negative); }
+.rg-seg-text { fill: var(--ground); font-size: 13px; font-variant-numeric: tabular-nums; }
+
+/* 浮层：跟着鼠标/焦点走，永不挡住所指（pointer-events: none）；白底 + 1px 边，不用阴影 */
+.rg-pop {
+  position: fixed;
+  z-index: 60;
+  max-width: 320px;
+  padding: 9px 11px 10px;
+  border: 1px solid var(--control);
+  border-radius: 10px;
+  background: var(--ground);
+  pointer-events: none;
+  color: var(--text);
+}
+.rg-pop-title { margin: 0 0 6px; font-size: 13px; font-weight: 500; }
+.rg-pop-rows { margin: 0; display: grid; gap: 3px; }
+.rg-pop-row { display: grid; grid-template-columns: 62px minmax(0, 1fr); gap: 8px; }
+.rg-pop-key { margin: 0; color: var(--faint); font-size: 12px; }
+.rg-pop-val { margin: 0; font-size: 12px; line-height: 1.45; overflow-wrap: anywhere; font-variant-numeric: tabular-nums; }
+
+/* 文字明细（折叠）：不丢信息的那条退路。
+   一步的轮没有图，那一页用不带 rg 前缀的一套类名（证明这一屏确实没有图形元素）。 */
+.rg-textdetail, .round-detail { margin: 4px 0 8px; border-top: 1px solid var(--rule); padding-top: 2px; }
+.rg-summary, .round-summary { cursor: pointer; padding: 10px 0 2px; font-size: 14px; }
+.rg-summary:focus-visible, .round-summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+.rg-summary-note, .round-note { margin: 4px 0 0; color: var(--muted); font-size: 13px; line-height: 1.5; }
+.rg-tbody, .round-tbody { padding-top: 6px; }
+
+/* 一步的轮：一句事实 + 一条元信息（没有图可画） */
+.round-single {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+  background: var(--ground);
+  padding: 16px 18px;
+  margin-bottom: 14px;
+}
+.round-single-line { margin: 0; font-size: 15px; line-height: 1.5; }
+.round-single-meta { margin: 6px 0 0; color: var(--muted); font-size: 13px; line-height: 1.5; font-variant-numeric: tabular-nums; }
+
+@media (max-width: 767px) {
+  .rg-panel { padding: 12px 12px 14px; }
+  .rg-hint { flex-basis: 100%; }
+  .rg-pop { max-width: 280px; }
+  .rg-pop-row { grid-template-columns: 56px minmax(0, 1fr); }
+}
+
+/* 动效只表达先后：失败的那一步**强调一次**（描边亮一下再退回去，不留任何残留），
+   reduced-motion 一律终态。 */
+@keyframes rg-emphasis {
+  from { stroke: var(--negative); stroke-opacity: .95; stroke-width: 3; }
+  to { stroke: var(--negative); stroke-opacity: 0; stroke-width: 9; }
+}
+.rg-node.is-bad.is-emphasis .rg-ring { animation: rg-emphasis 1.1s ease-out .5s 1 both; }
+@media (prefers-reduced-motion: reduce) {
+  .rg-line { transition: none; stroke-dashoffset: 0; opacity: 1; }
+  .rg-head { transition: none; opacity: 1; }
+  .rg-node { transition: none; opacity: 1; }
+  .rg-node.is-bad.is-emphasis .rg-ring { animation: none; stroke: transparent; }
+  .rg-seg-box, .rg-box, .rg-stat, .rg-name { transition: none; }
+}
+
+/* 两页共用会话范围；沿用面板按钮的字级和聚焦轮廓。 */
+.audit-scope { display: grid; grid-template-columns: auto 1fr; align-items: center; gap: 8px 16px; margin: 0 0 24px; }
+.audit-scope-options { display: flex; gap: 4px; padding: 3px; background: #f2f3f4; border-radius: 6px; }
+.audit-scope-options button { border: 0; border-radius: 4px; padding: 8px 12px; background: transparent; color: inherit; font: inherit; font-size: 14px; cursor: pointer; }
+.audit-scope-options button[aria-pressed="true"] { background: #fff; font-weight: 600; }
+.audit-scope-options button:focus-visible { outline: 2px solid currentColor; outline-offset: 2px; }
+.audit-scope-caption, .audit-scope-hint { margin: 0; font-size: 14px; line-height: 1.5; }
+.audit-scope-hint { grid-column: 1 / -1; color: #62686d; }
+@media (max-width: 600px) { .audit-scope { grid-template-columns: 1fr; gap: 8px; } .audit-scope-options { justify-self: start; } }
+
+/* 后台事件的阅读关系，没有时间比例；窄屏按相同顺序纵向阅读。 */
+.bg-events { margin: 16px 0 8px; min-width: 0; }
+.bg-title { margin: 0 0 6px; font-size: 18px; font-weight: 600; }
+.bg-count, .bg-explain, .bg-detail-state { margin: 5px 0; font-size: 14px; line-height: 1.6; color: var(--muted); }
+.bg-event { margin-top: 20px; min-width: 0; }
+.bg-event-title { margin: 0 0 12px; font-size: 16px; font-weight: 600; }
+.bg-flow { display: grid; grid-template-columns: minmax(0, 1fr) 88px minmax(0, 1fr) 88px minmax(0, 1fr); align-items: start; gap: 16px; padding: 14px; background: #f5f6f7; border-radius: 4px; }
+.bg-module { min-width: 0; }
+.bg-module-title { cursor: pointer; font-size: 15px; font-weight: 600; line-height: 1.6; }
+.bg-fields { margin: 12px 0 0; }
+.bg-field + .bg-field { margin-top: 12px; }
+.bg-label { color: var(--muted); font-size: 13px; line-height: 1.5; }
+.bg-value { margin: 3px 0 0; font-size: 14px; line-height: 1.7; white-space: pre-wrap; overflow-wrap: anywhere; }
+.bg-connection { padding-top: 18px; text-align: center; min-width: 0; }
+.bg-edge { border: 0; border-top: 2px solid #697c8c; padding: 8px 2px; background: transparent; color: inherit; font: inherit; font-size: 13px; line-height: 1.6; cursor: pointer; width: 100%; }
+.bg-edge-detail { margin: 6px 0; font-size: 14px; line-height: 1.7; overflow-wrap: anywhere; }
+.bg-read, .bg-more { margin-top: 12px; padding: 7px 10px; border: 1px solid #c7cbcf; border-radius: 4px; background: #fff; color: inherit; font: inherit; font-size: 14px; cursor: pointer; }
+.bg-module-title:focus-visible, .bg-edge:focus-visible, .bg-read:focus-visible, .bg-more:focus-visible { outline: 2px solid currentColor; outline-offset: 3px; }
+.bg-read-state, .bg-read-note { margin: 12px 0 0; font-size: 14px; line-height: 1.7; }
+.bg-diary-copy { margin: 12px 0 0; font-size: 15px; line-height: 1.9; white-space: pre-wrap; overflow-wrap: anywhere; }
+@media (max-width: 1100px) {
+  .bg-flow { grid-template-columns: minmax(0, 1fr); gap: 8px; }
+  .bg-connection { padding: 0; text-align: left; }
+  .bg-edge { width: auto; border-top: 0; border-left: 2px solid #697c8c; padding: 6px 12px; }
+}
+.audit-ownership { display: block; min-width: 0; color: var(--muted); font-size: 13px; line-height: 1.6; white-space: normal; overflow-wrap: anywhere; }
+.au-gist-wrap { min-width: 0; }
+.au-gist-wrap > .au-gist { display: block; }
+.ownership-note { margin: 8px 0 16px; }
+.au-detail > .audit-ownership { margin: 4px 0 12px; }
+.bg-event > .audit-ownership { margin: 0 0 12px; }
+@media (max-width: 767px) {
+  .au-gist-wrap { grid-area: gist; }
+}

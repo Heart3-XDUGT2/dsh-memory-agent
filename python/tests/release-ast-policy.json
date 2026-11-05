@@ -1,0 +1,13 @@
+{
+  "schema": 1,
+  "auditSha256": "d6ae1da33e410d2f3fc9f2655450956174bd1ab1b8a43935ac375036e2b4bacc",
+  "sourceFiles": 77,
+  "reviewedOn": "2026-11-05",
+  "scope": "Regression guard for the reviewed public source closure",
+  "entryHashes": {
+    "scripts/test-python.mjs": "cbdf18d380673116337d2446504248a971c6c41461085cda38720431d41bdee6",
+    "python/tests/run_release.py": "f80a15f910c35a2e725187235142ae79884590627f4367b863a880c44705656f"
+  },
+  "expectedPublicTests": 763,
+  "manualControlsNotRun": 10
+}

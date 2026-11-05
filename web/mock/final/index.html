@@ -1,0 +1,259 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#ffffff">
+  <title>Echo · 近况</title>
+  <link rel="stylesheet" href="./app.css">
+  <link rel="stylesheet" href="./round-flow.css">
+  <link rel="stylesheet" href="./round-map.css">
+  <link rel="stylesheet" href="./settings-center.css">
+  <link rel="stylesheet" href="./dashboard-panels.css">
+  <link rel="stylesheet" href="./emotion-charts.css">
+  <link rel="stylesheet" href="./panel-operations.css">
+  <link rel="stylesheet" href="./maintenance-injection.css">
+  <!-- 审计屏的折轮用的是产品那份实现（只引用，不改）：它挂 globalThis.EchoAuditView -->
+  <script src="/echo/audit-view.js" defer></script>
+  <script src="./audit-ownership.js" defer></script>
+  <script src="./ownership-view.js" defer></script>
+  <script src="./audit-scope.js" defer></script>
+  <script src="./background-events.js" defer></script>
+  <script src="./background-view.js" defer></script>
+  <script src="./dashboard-panels.js" defer></script>
+  <script src="./dashboard-system.js" defer></script>
+  <script src="/echo/views/emotion-space.js" defer></script>
+  <script src="./dashboard-space.js" defer></script>
+  <script src="./maintenance-actions.js" defer></script>
+  <script src="./views/maintenance.js" defer></script>
+  <script src="./views/injection.js" defer></script>
+  <!-- 各屏先挂到 globalThis.EchoViews 上，app.js 再接路由。 -->
+  <script src="./views/emotion.js" defer></script>
+  <script src="./views/talk.js" defer></script>
+  <script src="./views/threads.js" defer></script>
+  <script src="./views/memory.js" defer></script>
+  <script src="./views/graph.js" defer></script>
+  <script src="./round-flow-model.js" defer></script>
+  <script src="./round-map.js" defer></script>
+  <script src="./round-node-io.js" defer></script>
+  <script src="./views/audit.js" defer></script>
+<script src="./views/round.js" defer></script>
+  <script src="./views/system.js" defer></script>
+  <script src="./settings-state.js" defer></script>
+  <script src="./settings-whitelist.js" defer></script>
+  <script src="./settings-form.js" defer></script>
+  <script src="./views/config.js" defer></script>
+  <script src="./app.js" defer></script>
+</head>
+<body>
+  <a class="skip-link" href="#main">跳到主要内容</a>
+  <header class="mobile-bar" aria-label="移动导航">
+    <a class="mobile-wordmark" href="#/overview" aria-label="Echo 首页">Echo</a>
+    <span class="mobile-page-name" id="mobile-page-name">近况</span>
+    <button class="menu-trigger" id="menu-trigger" type="button" aria-label="打开导航菜单" aria-expanded="false" aria-controls="mobile-menu">
+      <span class="menu-lines" aria-hidden="true"><i></i><i></i></span>
+    </button>
+  </header>
+
+  <div class="app-shell">
+    <aside class="sidebar" aria-label="主侧栏">
+      <a class="brand" href="#/overview" aria-label="Echo 首页">
+        <span class="brand-name">Echo</span>
+      </a>
+      <nav class="primary-nav" aria-label="主要导航">
+        <div class="nav-group" role="group" aria-labelledby="nav-group-now">
+          <p class="nav-group-label" id="nav-group-now">此刻</p>
+          <a class="nav-link" href="#/overview" data-route="overview">近况</a>
+          <a class="nav-link" href="#/emotion" data-route="emotion">情绪</a>
+        </div>
+        <div class="nav-group" role="group" aria-labelledby="nav-group-talk">
+          <p class="nav-group-label" id="nav-group-talk">她说与记挂</p>
+          <a class="nav-link" href="#/talk" data-route="talk">对话</a>
+          <a class="nav-link" href="#/threads" data-route="threads">待跟进</a>
+        </div>
+        <div class="nav-group" role="group" aria-labelledby="nav-group-memory">
+          <p class="nav-group-label" id="nav-group-memory">记忆与审计</p>
+          <a class="nav-link" href="#/memory" data-route="memory">记忆</a>
+          <a class="nav-link" href="#/graph" data-route="graph">图谱</a>
+          <a class="nav-link" href="#/audit" data-route="audit">审计</a>
+        </div>
+        <div class="nav-group" role="group" aria-labelledby="nav-group-machine">
+          <p class="nav-group-label" id="nav-group-machine">本机</p>
+          <a class="nav-link" href="#/system" data-route="system">系统</a>
+          <a class="nav-link" href="#/maintenance" data-route="maintenance">维护</a>
+          <a class="nav-link" href="#/injection" data-route="injection">注入透视</a>
+          <a class="nav-link" href="#/config" data-route="config">设置</a>
+        </div>
+      </nav>
+      <div class="sidebar-foot">
+        <span class="scope-name">本地空间</span>
+        <span class="scope-state"><span class="state-dot" aria-hidden="true"></span><span id="sidebar-status">正在连接</span></span>
+      </div>
+    </aside>
+
+    <main class="main-content" id="main">
+      <div class="workspace">
+        <!-- 屏头只有三样：屏名（页面唯一的 h1）、这一屏回答什么、一个刷新。 -->
+        <header class="greeting view-head">
+          <div class="view-head-text">
+            <h1 id="view-title" tabindex="-1">近况</h1>
+            <p class="view-lead" id="view-lead">她现在怎么样。</p>
+            <p class="current-date" id="current-date"></p>
+            <p class="greeting-note" id="greeting-note" hidden>正在读取本机状态…</p>
+          </div>
+          <div class="view-tools">
+            <span class="view-tag" id="view-tag" hidden>未启用</span>
+            <button class="view-refresh" id="view-refresh" type="button" aria-label="重新读取近况">刷新</button>
+          </div>
+        </header>
+
+        <section class="view" id="view-overview" aria-labelledby="view-title">
+          <section class="readings grid-12" aria-label="Echo 近况">
+            <article class="reading span-2">
+              <h2>牵挂值</h2>
+              <p class="reading-value" id="reading-longing"><span class="value-main">—</span><span class="value-unit">/10</span></p>
+              <p class="reading-note" id="reading-longing-note">阈值 —</p>
+            </article>
+            <article class="reading span-2">
+              <h2>情绪强度</h2>
+              <p class="reading-value" id="reading-mood"><span class="value-main">—</span><span class="value-unit">/10</span></p>
+              <p class="reading-note" id="reading-mood-note">基线 —</p>
+            </article>
+            <article class="reading span-2">
+              <h2>可用记忆</h2>
+              <p class="reading-value" id="reading-memory"><span class="value-main">—</span></p>
+              <p class="reading-note" id="reading-memory-note">总计 — · 隔离 — · 取代 —</p>
+            </article>
+            <article class="reading span-2">
+              <h2>记忆图谱</h2>
+              <p class="reading-value" id="reading-graph"><span class="value-main">—</span></p>
+              <p class="reading-note" id="reading-graph-note">— 条边 · L0 —</p>
+            </article>
+            <article class="reading span-2">
+              <h2>待跟进</h2>
+              <p class="reading-value" id="reading-followups"><span class="value-main">—</span></p>
+              <p class="reading-note" id="reading-followups-note">— 到期 · — 计划中 · — 待安排</p>
+            </article>
+            <article class="reading span-2">
+              <h2>最近日记</h2>
+              <p class="reading-value" id="reading-diary"><span class="value-main">—</span></p>
+              <p class="reading-note" id="reading-diary-note">本机记录</p>
+            </article>
+          </section>
+
+          <div class="content-grid grid-12">
+            <section class="panel span-8" id="conversations" aria-labelledby="conversations-title">
+              <div class="panel-heading">
+                <div>
+                  <h2 id="conversations-title">最近对话</h2>
+                  <p class="count-label" id="conversation-count">—</p>
+                </div>
+                <div class="panel-more" hidden>
+                  <a class="more-button" id="conversation-more" href="#/talk">查看更多对话</a>
+                </div>
+              </div>
+              <div class="conversation-list" id="conversation-list" aria-live="polite">
+                <p class="loading-copy">正在读取对话…</p>
+              </div>
+            </section>
+
+            <section class="panel span-4 status-panel" aria-labelledby="status-title">
+              <div class="panel-heading compact-heading">
+                <div>
+                  <h2 id="status-title">运行状态</h2>
+                  <p class="panel-caption">本机服务</p>
+                </div>
+              </div>
+              <dl class="status-list" id="status-list" aria-live="polite">
+                <div class="status-row"><dt>Echo</dt><dd>读取中</dd></div>
+                <div class="status-row"><dt>记忆</dt><dd>读取中</dd></div>
+                <div class="status-row"><dt>引擎</dt><dd>读取中</dd></div>
+                <div class="status-row"><dt>消息通道</dt><dd>读取中</dd></div>
+              </dl>
+            </section>
+
+            <section class="panel span-6" id="threads" aria-labelledby="threads-title">
+              <div class="panel-heading">
+                <div>
+                  <h2 id="threads-title">要记得的事</h2>
+                  <p class="panel-caption" id="threads-caption">只列出需要留心的安排</p>
+                </div>
+                <div class="panel-actions">
+                  <span class="count-label" id="threads-count">—</span>
+                  <div class="panel-more" hidden>
+                    <a class="more-button" id="threads-more" href="#/threads">查看更多</a>
+                  </div>
+                </div>
+              </div>
+              <div class="thread-list" id="thread-list" aria-live="polite">
+                <p class="loading-copy">正在读取待跟进事项…</p>
+              </div>
+            </section>
+
+            <section class="panel span-6 diary-panel" id="diary" aria-labelledby="diary-title">
+              <div class="panel-heading">
+                <div>
+                  <h2 id="diary-title">最近日记</h2>
+                </div>
+                <div class="panel-more" hidden>
+                  <button class="more-button" id="diary-more" type="button" aria-controls="diary-list" aria-expanded="false">查看更多日记</button>
+                </div>
+              </div>
+              <div class="pb-diary-filter">
+                <label for="diary-search">搜索最近日记窗口<input id="diary-search" type="search" placeholder="日期或日记关键词" autocomplete="off"></label>
+                <p class="pb-diary-count" id="diary-search-count" aria-live="polite">正在读取日记窗口</p>
+              </div>
+              <div class="diary-list" id="diary-list" aria-live="polite">
+                <p class="loading-copy">正在读取日记…</p>
+              </div>
+            </section>
+          </div>
+        </section>
+
+        <!-- 其余八屏的容器由路由按需建在下面，切走的屏只隐藏、不删 DOM。 -->
+        <div id="view-host"></div>
+
+        <footer class="page-foot"><span>Echo</span><a href="/echo/" target="_blank" rel="noopener noreferrer">打开旧审查台</a><span>数据保存在本机</span></footer>
+      </div>
+    </main>
+  </div>
+
+  <div class="menu-scrim" id="menu-scrim" hidden>
+    <section class="menu-sheet" id="mobile-menu" role="dialog" aria-modal="true" aria-labelledby="menu-title" tabindex="-1">
+      <div class="sheet-heading">
+        <div>
+          <h2 id="menu-title">Echo</h2>
+          <p>本地空间</p>
+        </div>
+        <button class="sheet-close" id="menu-close" type="button" aria-label="关闭导航菜单">关闭</button>
+      </div>
+      <nav class="sheet-nav" aria-label="移动导航菜单">
+        <div class="nav-group" role="group" aria-labelledby="sheet-nav-group-now">
+          <p class="nav-group-label" id="sheet-nav-group-now">此刻</p>
+          <a class="nav-link" href="#/overview" data-route="overview">近况</a>
+          <a class="nav-link" href="#/emotion" data-route="emotion">情绪</a>
+        </div>
+        <div class="nav-group" role="group" aria-labelledby="sheet-nav-group-talk">
+          <p class="nav-group-label" id="sheet-nav-group-talk">她说与记挂</p>
+          <a class="nav-link" href="#/talk" data-route="talk">对话</a>
+          <a class="nav-link" href="#/threads" data-route="threads">待跟进</a>
+        </div>
+        <div class="nav-group" role="group" aria-labelledby="sheet-nav-group-memory">
+          <p class="nav-group-label" id="sheet-nav-group-memory">记忆与审计</p>
+          <a class="nav-link" href="#/memory" data-route="memory">记忆</a>
+          <a class="nav-link" href="#/graph" data-route="graph">图谱</a>
+          <a class="nav-link" href="#/audit" data-route="audit">审计</a>
+        </div>
+        <div class="nav-group" role="group" aria-labelledby="sheet-nav-group-machine">
+          <p class="nav-group-label" id="sheet-nav-group-machine">本机</p>
+          <a class="nav-link" href="#/system" data-route="system">系统</a>
+          <a class="nav-link" href="#/maintenance" data-route="maintenance">维护</a>
+          <a class="nav-link" href="#/injection" data-route="injection">注入透视</a>
+          <a class="nav-link" href="#/config" data-route="config">设置</a>
+        </div>
+      </nav>
+      <div class="sheet-foot"><span class="state-dot" aria-hidden="true"></span><span id="sheet-status">正在连接</span></div>
+    </section>
+  </div>
+</body>
+</html>

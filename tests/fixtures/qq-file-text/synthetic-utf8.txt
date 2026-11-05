@@ -1,0 +1,4 @@
+纯合成 TXT 夹具
+中文第一行。
+English line: Alpha 123.
+最后一行。

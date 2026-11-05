@@ -1,0 +1,10 @@
+name: Feature request
+description: 说明问题与期望行为
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: 想解决的问题与使用场景
+      description: 使用合成例子，不附个人聊天或配置。
+    validations:
+      required: true

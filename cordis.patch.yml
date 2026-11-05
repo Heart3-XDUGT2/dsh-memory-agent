@@ -1,0 +1,5 @@
+# dsh-echo — bundle patch:作为 profile bundle 注册时 loader 自动应用,
+# 把 Echo 插件挂载进 cordis 插件表(与 afaccess 同款配方)。
+- insert:
+    - id: echo
+      name: dsh-echo

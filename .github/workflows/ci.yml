@@ -1,0 +1,57 @@
+name: Verify
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  standalone:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.14'
+      - run: npm ci --ignore-scripts
+      - run: npm run dev:bootstrap
+      - run: npm run test:unit
+      - run: npm run test:py -- --guard-selftest
+      - run: npm run test:py
+      - run: npm run release:check
+  cross-repository:
+    if: ${{ !github.event.repository.private && github.event_name != 'pull_request' }}
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: dsh-memory-agent
+          persist-credentials: false
+      - uses: actions/checkout@v4
+        with:
+          repository: Heart3-XDUGT2/dsh-qq-bridge
+          path: dsh-qq-bridge
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.14'
+      - run: npm ci --ignore-scripts
+        working-directory: dsh-memory-agent
+      - run: npm run dev:bootstrap
+        working-directory: dsh-memory-agent
+      - run: npm ci --ignore-scripts --legacy-peer-deps
+        working-directory: dsh-qq-bridge
+      - run: npm run test:prepare-cli
+        working-directory: dsh-qq-bridge
+      - run: npm run test:all
+        working-directory: dsh-memory-agent

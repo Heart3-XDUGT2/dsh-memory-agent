@@ -1,0 +1,34 @@
+{
+  "schema": 1,
+  "package": "@deepseek-ai/dsh-web-app",
+  "version": "0.2.0-rc.2",
+  "license": "MIT",
+  "purpose": "Unchanged upstream standard preset test data, not a host module stub or runtime dependency",
+  "url": "https://registry.npmjs.org/@deepseek-ai/dsh-web-app/-/dsh-web-app-0.2.0-rc.2.tgz",
+  "integrity": "sha512-pCIMPLfTKVfY942dP4eJSDVw7iUw86pemzfOr/e5DWP7CdCKTfvA82kP0RJAKJcyKJd8s679hqtCue/p4P20Dg==",
+  "tarballSha256": "f633daba9d434233f3664553292ca31e996ee2395bfe97e38631fd2ea4928d74",
+  "tarballBytes": 29796,
+  "files": [
+    {
+      "path": "presets/standard.patch.yml",
+      "archiveEntry": "package/presets/standard.patch.yml",
+      "bytes": 7511,
+      "sha256": "6cd2f197737fc94a45e487d0bb57869461dd6f392d45f6429b576e75d973eda8",
+      "transformation": "none"
+    },
+    {
+      "path": "LICENSE",
+      "archiveEntry": "package/LICENSE",
+      "bytes": 1065,
+      "sha256": "ebb4f09972aee8608be255debaf78451a68e95c290f55c240dec2ecfa16ea6be",
+      "transformation": "none"
+    },
+    {
+      "path": "package.json",
+      "archiveEntry": "package/package.json",
+      "bytes": 9527,
+      "sha256": "8d1324675ff120ed1ce834ddd689546deed093d41cc50faf4a5b4d6515a1b233",
+      "transformation": "none"
+    }
+  ]
+}

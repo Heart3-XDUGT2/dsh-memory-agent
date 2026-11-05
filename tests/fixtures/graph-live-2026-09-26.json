@@ -1,0 +1,322 @@
+{
+ "note": "2026-09-26 深夜的活库快照(17 节点 / 28 边)—— 用来当布局几何测试的夹具,免得测试依赖服务器",
+ "nodes": [
+  {
+   "id": "d73455531d91420b",
+   "name": "Echo",
+   "type": "person",
+   "weight": 7,
+   "isProtected": false
+  },
+  {
+   "id": "0dfcd890444d439f",
+   "name": "用户",
+   "type": "person",
+   "weight": 31,
+   "isProtected": false
+  },
+  {
+   "id": "10a47774d37848cf",
+   "name": "聊天",
+   "type": "habit",
+   "weight": 1,
+   "isProtected": false
+  },
+  {
+   "id": "918d1df4c9154d4c",
+   "name": "章鱼小丸子",
+   "type": "preference",
+   "weight": 2,
+   "isProtected": false
+  },
+  {
+   "id": "f1b7b0143e7f4387",
+   "name": "做章鱼小丸子",
+   "type": "concept",
+   "weight": 1,
+   "isProtected": false
+  },
+  {
+   "id": "f2b38cbb6fb34cb8",
+   "name": "Echo记忆架构",
+   "type": "concept",
+   "weight": 6,
+   "isProtected": false
+  },
+  {
+   "id": "41f6f86fa8304fb3",
+   "name": "校园跑",
+   "type": "concept",
+   "weight": 3,
+   "isProtected": false
+  },
+  {
+   "id": "0686d7144d4f45f5",
+   "name": "3km速度限制",
+   "type": "concept",
+   "weight": 1,
+   "isProtected": false
+  },
+  {
+   "id": "af4529419b264057",
+   "name": "3km与速度限制",
+   "type": "concept",
+   "weight": 1,
+   "isProtected": false
+  },
+  {
+   "id": "b7d4844a4fcb43fb",
+   "name": "新工科大学",
+   "type": "concept",
+   "weight": 3,
+   "isProtected": false
+  },
+  {
+   "id": "47d76c2de1db4262",
+   "name": "西安电子科技大学",
+   "type": "concept",
+   "weight": 1,
+   "isProtected": false
+  },
+  {
+   "id": "189cd83d9a5d479e",
+   "name": "大一学生",
+   "type": "concept",
+   "weight": 1,
+   "isProtected": false
+  },
+  {
+   "id": "34ccc718206240d3",
+   "name": "软件工程专业",
+   "type": "concept",
+   "weight": 1,
+   "isProtected": false
+  },
+  {
+   "id": "2f25023dc4664f92",
+   "name": "阿岚",
+   "type": "person",
+   "weight": 1,
+   "isProtected": false
+  },
+  {
+   "id": "47f8ec8d1d0644e2",
+   "name": "她",
+   "type": "person",
+   "weight": 1,
+   "isProtected": false
+  },
+  {
+   "id": "1eabf542473e4363",
+   "name": "浪费时间",
+   "type": "concept",
+   "weight": 1,
+   "isProtected": false
+  },
+  {
+   "id": "912ed47931f14df8",
+   "name": "一千美元",
+   "type": "concept",
+   "weight": 1,
+   "isProtected": false
+  }
+ ],
+ "edges": [
+  {
+   "source": "0dfcd890444d439f",
+   "target": "10a47774d37848cf",
+   "weight": 3,
+   "relation": "习惯",
+   "activation": 100
+  },
+  {
+   "source": "0dfcd890444d439f",
+   "target": "918d1df4c9154d4c",
+   "weight": 10,
+   "relation": "喜欢",
+   "activation": 100
+  },
+  {
+   "source": "0dfcd890444d439f",
+   "target": "f1b7b0143e7f4387",
+   "weight": 1,
+   "relation": "会学",
+   "activation": 100
+  },
+  {
+   "source": "0dfcd890444d439f",
+   "target": "f2b38cbb6fb34cb8",
+   "weight": 1,
+   "relation": "在忙",
+   "activation": 100
+  },
+  {
+   "source": "0dfcd890444d439f",
+   "target": "f2b38cbb6fb34cb8",
+   "weight": 1,
+   "relation": "正在搭建",
+   "activation": 100
+  },
+  {
+   "source": "0dfcd890444d439f",
+   "target": "f2b38cbb6fb34cb8",
+   "weight": 1,
+   "relation": "在做",
+   "activation": 100
+  },
+  {
+   "source": "0dfcd890444d439f",
+   "target": "41f6f86fa8304fb3",
+   "weight": 10,
+   "relation": "参加",
+   "activation": 100
+  },
+  {
+   "source": "41f6f86fa8304fb3",
+   "target": "0686d7144d4f45f5",
+   "weight": 4,
+   "relation": "要求",
+   "activation": 100
+  },
+  {
+   "source": "0dfcd890444d439f",
+   "target": "41f6f86fa8304fb3",
+   "weight": 1,
+   "relation": "进行",
+   "activation": 100
+  },
+  {
+   "source": "0dfcd890444d439f",
+   "target": "af4529419b264057",
+   "weight": 1,
+   "relation": "有校园跑要求",
+   "activation": 100
+  },
+  {
+   "source": "0dfcd890444d439f",
+   "target": "f2b38cbb6fb34cb8",
+   "weight": 1,
+   "relation": "正在开发",
+   "activation": 100
+  },
+  {
+   "source": "0dfcd890444d439f",
+   "target": "b7d4844a4fcb43fb",
+   "weight": 10,
+   "relation": "就读于",
+   "activation": 100
+  },
+  {
+   "source": "0dfcd890444d439f",
+   "target": "b7d4844a4fcb43fb",
+   "weight": 1,
+   "relation": "读于",
+   "activation": 100
+  },
+  {
+   "source": "0dfcd890444d439f",
+   "target": "f2b38cbb6fb34cb8",
+   "weight": 10,
+   "relation": "负责",
+   "activation": 100
+  },
+  {
+   "source": "0dfcd890444d439f",
+   "target": "47d76c2de1db4262",
+   "weight": 10,
+   "relation": "就读于",
+   "activation": 100
+  },
+  {
+   "source": "0dfcd890444d439f",
+   "target": "f2b38cbb6fb34cb8",
+   "weight": 1,
+   "relation": "搭建",
+   "activation": 100
+  },
+  {
+   "source": "0dfcd890444d439f",
+   "target": "b7d4844a4fcb43fb",
+   "weight": 1,
+   "relation": "就读专业",
+   "activation": 100
+  },
+  {
+   "source": "0dfcd890444d439f",
+   "target": "189cd83d9a5d479e",
+   "weight": 1.5,
+   "relation": "是",
+   "activation": 100
+  },
+  {
+   "source": "0dfcd890444d439f",
+   "target": "34ccc718206240d3",
+   "weight": 1,
+   "relation": "可能转到",
+   "activation": 100
+  },
+  {
+   "source": "2f25023dc4664f92",
+   "target": "918d1df4c9154d4c",
+   "weight": 1,
+   "relation": "喜欢吃",
+   "activation": 100
+  },
+  {
+   "source": "0dfcd890444d439f",
+   "target": "d73455531d91420b",
+   "weight": 9,
+   "relation": "希望打造",
+   "activation": 100
+  },
+  {
+   "source": "0dfcd890444d439f",
+   "target": "d73455531d91420b",
+   "weight": 1,
+   "relation": "期望打造",
+   "activation": 100
+  },
+  {
+   "source": "0dfcd890444d439f",
+   "target": "d73455531d91420b",
+   "weight": 1,
+   "relation": "想打造",
+   "activation": 100
+  },
+  {
+   "source": "0dfcd890444d439f",
+   "target": "d73455531d91420b",
+   "weight": 1,
+   "relation": "希望塑造",
+   "activation": 100
+  },
+  {
+   "source": "0dfcd890444d439f",
+   "target": "d73455531d91420b",
+   "weight": 1,
+   "relation": "重写前告知",
+   "activation": 100
+  },
+  {
+   "source": "47f8ec8d1d0644e2",
+   "target": "1eabf542473e4363",
+   "weight": 10,
+   "relation": "不喜欢",
+   "activation": 100
+  },
+  {
+   "source": "0dfcd890444d439f",
+   "target": "d73455531d91420b",
+   "weight": 1,
+   "relation": "给AI升级大脑",
+   "activation": 99.9
+  },
+  {
+   "source": "0dfcd890444d439f",
+   "target": "912ed47931f14df8",
+   "weight": 1,
+   "relation": "有预算",
+   "activation": 99.9
+  }
+ ]
+}

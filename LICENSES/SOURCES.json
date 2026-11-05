@@ -1,0 +1,52 @@
+{
+  "schema": 1,
+  "verification": "original notices retained; URLs and received-source hashes in THIRD_PARTY.md and docs/vendor/PAD_SOURCE.json",
+  "files": [
+    {
+      "path": "lib/ipc-core/LICENSE",
+      "sha256": "2b0410693ae459d70eb1eeb00c15351ca1960b5e34a15742b8510ff0eec0ac0c",
+      "scope": "runtime-distribution"
+    },
+    {
+      "path": "web/vendor/LICENSE.d3.txt",
+      "sha256": "5411e51c774811d3d8a96d7e6259cf9c2be052114f80e5016cc5563dd4de800c",
+      "scope": "runtime-distribution"
+    },
+    {
+      "path": "LICENSES/dsh-pad-emotion-MIT.txt",
+      "sha256": "7890035ee1010751e34fc6e3f0acb9c4642b860b03352b4b866ac2d237a51929",
+      "scope": "runtime-distribution"
+    },
+    {
+      "path": "LICENSES/PDFjs-5.4.296-Apache-2.0.txt",
+      "sha256": "0d542e0c8804e39aa7f37eb00da5a762149dc682d7829451287e11b938e94594",
+      "scope": "runtime-distribution"
+    },
+    {
+      "path": "LICENSES/pend-1.2.0.txt",
+      "sha256": "7e64acffcb0d20d33f5a86949ffd4a99ae045b10c7332a9c3a58635876c16880",
+      "scope": "runtime-distribution"
+    },
+    {
+      "path": "LICENSES/saxes-6.0.0.txt",
+      "sha256": "0fac2374380621b22e6b50451057721a9c52935b02d16d106a9f04897f061d0e",
+      "scope": "runtime-distribution"
+    },
+    {
+      "path": "LICENSES/unpdf-1.4.0.txt",
+      "sha256": "4a57080b8ecdb3a53ec678828121849ce5df877a99b1ad8d50e165d8a2aded1b",
+      "scope": "runtime-distribution"
+    },
+    {
+      "path": "LICENSES/xmlchars-2.2.0.txt",
+      "sha256": "45d196313c2647d313cc65ca9b093d2d6974b64d35ee7346f2c60c9d518dff2c",
+      "scope": "runtime-distribution"
+    },
+    {
+      "path": "LICENSES/yauzl-3.4.0.txt",
+      "sha256": "b303783d5eb7ca50b853ffa5f145e4e7998fab339831d848f507ca6cd970577a",
+      "scope": "runtime-distribution"
+    }
+  ],
+  "developmentFixture": "tests/fixtures/host-web-app/SOURCE.json"
+}

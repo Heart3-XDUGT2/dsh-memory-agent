@@ -1,0 +1,32 @@
+d3 v7.9.0 (web/vendor/d3.v7.min.js)
+====================================
+本目录里的 d3.v7.min.js 是从 https://cdn.jsdelivr.net/npm/d3@7/dist/d3.min.js 取的
+官方发行版(d3 v7.9.0,273 KB,首行保留原始版权声明)。
+
+为什么要放进仓库,而不是继续从 CDN 加载:
+
+1. 审查台/图谱是这个插件的本地页面。答辩现场的网络是不可控的(可能断网、
+   也可能连不上境外 CDN),一张白屏的图比一张丑图糟得多 —— 依赖 外部 CDN 的页面
+   等于把演示押在别人的服务器上。
+2. 测试里要用它。`tests/graph-d3-live.test.js` 把页面里那段布局代码原样抽出来,
+   用**这个文件**在 Node 里跑真数据 —— 测的是页面真会执行的那份 d3,不是我
+   凭记忆写的近似积分器(09-26 深夜我就是被自己的近似坑了两次)。
+
+页面加载顺序(web/graph.html):先 <script src="./vendor/d3.v7.min.js">,
+只有 window.d3 还是 undefined 时才 document.write 那份 CDN 兜底。
+
+许可:d3 采用 ISC 许可(见下方原文),保留首行版权即可再分发。
+
+Copyright 2010-2023 Mike Bostock
+
+Permission to use, copy, modify, and/or distribute this software for any
+purpose with or without fee is hereby granted, provided that the above
+copyright notice and this permission notice appear in all copies.
+
+THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES WITH
+REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF MERCHANTABILITY
+AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY SPECIAL, DIRECT,
+INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES WHATSOEVER RESULTING FROM
+LOSS OF USE, DATA OR PROFITS, WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR
+OTHER TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR
+PERFORMANCE OF THIS SOFTWARE.

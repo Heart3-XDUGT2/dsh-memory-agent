@@ -1,0 +1,34 @@
+/* Stage B discovery, filters and explicit actions inherit the existing shell. */
+.pb-source-chips { display: flex; gap: 8px; flex-wrap: wrap; margin: 0 0 16px; }
+.pb-source-chips [aria-pressed="true"] { background: var(--surface); border-color: var(--text); font-weight: 500; }
+.pb-downloads { margin-top: 24px; }
+.pb-talk-content { display: grid; grid-template-columns: minmax(0,2fr) minmax(240px,1fr); gap: 28px; align-items: start; }
+.pb-talk-content .pb-downloads { margin-top: 0; }
+#view-talk .talk-row { min-height: 0; padding-top: 18px; padding-bottom: 18px; }
+.pb-downloads > summary { cursor: pointer; min-height: 44px; display: flex; align-items: center; }
+.pb-downloads .dp-actions { margin-top: 16px; }
+.pb-diary-filter { margin: 12px 0 16px; }
+.pb-diary-filter label { display: grid; gap: 8px; color: var(--muted); font-size: 14px; }
+.pb-diary-filter input { width: 100%; min-height: 44px; padding: 8px 12px; font: inherit; color: var(--text); border: 1px solid var(--control); border-radius: 10px; background: var(--ground); }
+.pb-diary-count { margin: 8px 0; color: var(--muted); font-size: 14px; }
+.pb-entry-links { display: flex; flex-wrap: wrap; gap: 12px; margin: 16px 0; }
+.pb-alias-candidates { margin: 20px 0; }
+.pb-alias-candidates h3 { margin: 0 0 12px; font-size: 16px; }
+.pb-candidate-list { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 16px; }
+.pb-candidate-list button { max-width: 100%; overflow-wrap: anywhere; }
+.pb-candidate-confirm { margin-top: 16px; }
+.pb-candidate-confirm .dp-actions { margin-top: 12px; }
+@media (min-width: 1101px) {
+  #view-overview .content-grid:not(.is-reading) { align-items: stretch; }
+  #view-overview .content-grid:not(.is-reading) #conversations { grid-column: 1 / 9; grid-row: 1; }
+  #view-overview .content-grid:not(.is-reading) .status-panel { grid-column: 9 / 13; grid-row: 1 / 3; }
+  #view-overview .content-grid:not(.is-reading) #threads { grid-column: 1 / 9; grid-row: 2; }
+  #view-overview .content-grid:not(.is-reading) #diary { grid-column: 1 / -1; grid-row: 3; }
+}
+@media (max-width: 1100px) {
+  .pb-talk-content { grid-template-columns: minmax(0,1fr); gap: 24px; }
+}
+@media (max-width: 640px) {
+  #view-talk > form.dp-toolbar { display: grid; grid-template-columns: minmax(0,1fr) auto; }
+  #view-talk > form.dp-toolbar .dp-button { align-self: end; }
+}

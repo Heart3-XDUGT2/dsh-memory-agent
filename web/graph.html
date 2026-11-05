@@ -1,0 +1,1484 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>记忆图谱 — Echo 审查台</title>
+<!-- d3 就在本地(web/vendor/d3.v7.min.js,ISC 许可,见同目录 LICENSE.d3.txt)。
+     v0.27.0 起不再依赖 CDN:答辩现场断网/被墙也能出图;CDN 那份是兜底(本地文件缺了才用)。 -->
+<script src="./vendor/d3.v7.min.js"></script>
+<script>
+  if (typeof d3 === 'undefined') {
+    document.write('<script src="https://d3js.org/d3.v7.min.js"><\/script>')
+  }
+</script>
+<style>
+/* 记忆图谱 3.0(2026-09-26 深夜)。前四版都"丑/狗屎",这次去读现成的好实现:
+ *
+ *  ① 0xedgelessblade/contextual-neural-map(SKILL.md + assets/template.html)
+ *     铅笔手绘 + Obsidian Graph View 风。拿到的硬指标:
+ *       · 纸底 #f5f2ed + 两层 repeating-linear-gradient 画 28px 细格 + feTurbulence 噪点(0.03)
+ *       · 线 **0.5 / 1.2 / 1.8px**,透明度 0.3 / 0.55,颜色全是灰棕(#cdc6bb/#a09888/#8a8279),
+ *         **不用饱和色**;关系类型靠**虚线**(5,4 与 8,3)区分,不靠加粗
+ *       · 节点 4~20px,**靠形状分类型**:实心深色、空心虚线、半透明、大环;
+ *         高权重节点才挂柔影(feGaussianBlur 4 + dy 2 + slope 0.08)
+ *       · 标签 9px、#9e9589、opacity 0.55,画在 r+14 处 —— 默认就是暗的,不跟内容抢
+ *       · 面板 1.5px 实边 + backdrop-filter blur(16px) + dashed 分隔线
+ *       · 抖动:feTurbulence(0.03~0.04) + feDisplacementMap(scale 2.5~3) 给线和圆"手画感"
+ *  ② sigma.js alpha-blending(深色对照):深底上 edgeOpacity 默认只有 **0.1**、nodeOpacity 0.8,
+ *     节点 = 提亮色填充 + **本色描边环**
+ *  ③ Obsidian graph view 的 CSS 桥:node/link/text 三类各自可调,线默认极淡
+ *
+ * 结论跟我前四版几乎相反:**小点 + 发丝线 + 低饱和 + 用形状/虚线表达类型**;
+ * 我一直在做"大圆 + 粗棒 + 高饱和 + 全同一种圆"。这一版把比例整个反过来。
+ * 三套皮(按钮切换):稿纸(默认)/ 深空 / 焦点。 */
+:root,[data-theme="paper"]{
+  --bg:#f5f2ed; --panel:#faf8f4; --panel-2:#efece5; --line:#d5cfc6; --line-soft:#e3ded4;
+  --ink:#2c2825; --dim:#6b645b; --faint:#a09888; --accent:#6b645b;
+  --ok:#4d7c4d; --warn:#a06a1f; --bad:#a13b32;
+  --bar-bg:rgba(245,242,237,.92); --card-bg:rgba(250,248,244,.97); --legend-bg:rgba(245,242,237,.92);
+  --shadow:0 2px 20px rgba(58,54,50,.08);
+  --dots-op:0; --vignette-op:0; --grid-op:1; --grain-op:.03;
+}
+[data-theme="obsidian"]{
+  --bg:#191a1c; --panel:#212225; --panel-2:#1c1d20; --line:#2e3033; --line-soft:#26282b;
+  --ink:#dcddde; --dim:#9b9fa3; --faint:#6b6f73; --accent:#dcddde;
+  --ok:#4ade80; --warn:#fbbf24; --bad:#f87171;
+  --bar-bg:rgba(25,26,28,.92); --card-bg:rgba(33,34,37,.96); --legend-bg:rgba(25,26,28,.92);
+  --shadow:0 10px 30px rgba(0,0,0,.55);
+  --dots-op:0; --vignette-op:0; --grid-op:0; --grain-op:0;
+}
+[data-theme="focus"]{
+  --bg:#0c0e12; --panel:#14171c; --panel-2:#101318; --line:#23272e; --line-soft:#1b1f25;
+  --ink:#e8ebef; --dim:#98a0aa; --faint:#636b76; --accent:#9dc4e8;
+  --ok:#4ade80; --warn:#fbbf24; --bad:#f87171;
+  --bar-bg:rgba(12,14,18,.9); --card-bg:rgba(20,23,28,.96); --legend-bg:rgba(12,14,18,.92);
+  --shadow:0 10px 30px rgba(0,0,0,.7);
+  --dots-op:0; --vignette-op:0; --grid-op:0; --grain-op:0;
+}
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:var(--bg);color:var(--ink);font-family:'Segoe UI',system-ui,'Microsoft YaHei',sans-serif;overflow:hidden;height:100vh;font-size:13px;transition:background .25s,color .25s}
+/* 纸感:两层细格 + 一层噪点(数值照抄参考实现) */
+body::before{content:'';position:fixed;inset:0;pointer-events:none;z-index:0;opacity:var(--grid-op);
+  background:
+    repeating-linear-gradient(0deg,transparent,transparent 28px,rgba(180,170,155,.07) 28px,rgba(180,170,155,.07) 29px),
+    repeating-linear-gradient(90deg,transparent,transparent 28px,rgba(180,170,155,.05) 28px,rgba(180,170,155,.05) 29px)}
+body::after{content:'';position:fixed;inset:0;pointer-events:none;z-index:0;opacity:var(--grain-op);
+  background-image:url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E")}
+svg{position:relative;z-index:1}
+#toolbar,#legend,#tooltip{position:relative;z-index:100}
+#toolbar{position:fixed;top:0;left:0;right:0;z-index:100;background:var(--bar-bg);backdrop-filter:blur(12px);border-bottom:1px solid var(--line);padding:9px 16px;display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+#toolbar h1{font-size:.92rem;color:var(--accent);white-space:nowrap;font-weight:650;letter-spacing:.02em}
+#toolbar a{color:var(--dim);font-size:.72rem;text-decoration:none}
+#toolbar a:hover{color:var(--accent)}
+.sep{width:1px;height:18px;background:var(--line)}
+.glabel{font-size:.68rem;color:var(--faint);letter-spacing:.04em}
+#search{background:var(--panel-2);border:1px solid var(--line);border-radius:7px;padding:5px 10px;color:var(--ink);font-size:.78rem;width:170px;outline:none;font-family:inherit}
+#search:focus{border-color:var(--accent);box-shadow:0 0 0 3px rgba(76,194,245,.14)}
+.filter-btn{background:var(--panel-2);border:1px solid var(--line);border-radius:999px;padding:3px 10px;color:var(--dim);font-size:.7rem;cursor:pointer;transition:all .2s;font-family:inherit}
+.filter-btn.active{border-color:var(--accent);color:var(--accent);background:rgba(76,194,245,.1)}
+.filter-btn:hover{border-color:#3b4a68;color:var(--ink)}
+#type-btns{display:flex;gap:5px;align-items:center}
+#weight-slider{width:92px;accent-color:var(--accent)}
+#weight-val{font-size:.72rem;color:var(--accent);font-family:ui-monospace,Consolas,monospace;min-width:12px;display:inline-block}
+#stats-bar{margin-left:auto;display:flex;gap:11px;font-size:.7rem;color:var(--faint);align-items:center}
+#stats-bar .sv{color:var(--accent);font-weight:650;font-family:ui-monospace,Consolas,monospace}
+#reset-btn,#label-btn,#theme-btn,#motion-btn{background:var(--panel-2);border:1px solid var(--line);border-radius:7px;padding:4px 10px;color:var(--dim);font-size:.7rem;cursor:pointer;font-family:inherit}
+#reset-btn:hover{border-color:var(--warn);color:var(--warn)}
+#label-btn:hover,#theme-btn:hover,#motion-btn:hover{border-color:var(--accent);color:var(--accent)}
+svg{width:100%;height:100vh;cursor:grab;display:block}
+svg:active{cursor:grabbing}
+.node{cursor:pointer}
+[data-theme="paper"] .node-label{opacity:.7}
+.node-glow{fill:none;stroke:#FFD700;stroke-width:2;opacity:.6;filter:url(#glow)}
+/* 亮底那套:金色发光在纸上会糊,换成实心描边;节点颜色整体压深一档好读 */
+[data-theme="paper"] .node-glow{filter:none;opacity:.75;stroke:#b45309}
+[data-theme="paper"] .link{stroke-linecap:round;filter:url(#sketchLine)}
+[data-theme="paper"] .node{filter:url(#pencil)}
+[data-theme="paper"] .link-arrow{filter:url(#sketchLine)}
+[data-theme="paper"] .node-label{stroke-width:2.5px}
+.link{fill:none;stroke-linecap:round;cursor:pointer}
+.link-hit{fill:none;stroke:transparent;stroke-width:14;cursor:pointer;pointer-events:stroke}
+.link-arrow{fill:none;stroke-width:1.3;stroke-linecap:round;stroke-linejoin:round;opacity:.22;pointer-events:none}
+.node-halo{fill:var(--bg)}
+/* ── 动效(2026-09-26 深夜他说「能让它动起来就好了」)────────────────────────
+   三样,都要带含义,不做纯装饰:
+     ① 线的流动 —— 虚线沿 source→target 走(所以方向不用箭头猜了),一个周期的速度
+        跟权重挂钩:记忆越强流得越快(--dur 由 JS 按权重写在行内)。
+     ② 新记忆长出来 —— 只有**新增**的节点/边才做入场(见 .enter)。每 10s 轮询重画
+        不会让整张图一直闪,这也是参考实现 streamGraph 的做法(新节点才弹)。
+     ③ 核心锚定节点呼吸 —— 一圈淡淡的光环,只给 isProtected 那几个(别处安静)。
+   开关:工具条「动效」按钮 = 开/弱/关,记在 localStorage;系统 prefers-reduced-motion
+   一律关(见文件末尾那条 media query)。 */
+@keyframes flow{from{stroke-dashoffset:0}to{stroke-dashoffset:-28}}
+/* 呼吸环:只动 opacity/stroke-width,r 由 JS 按节点大小给(动画里改 r 容易跟布局抢) */
+@keyframes breatheOut{0%{opacity:.5;stroke-width:2}70%{opacity:0;stroke-width:.5}100%{opacity:0;stroke-width:.5}}
+@keyframes popIn{from{opacity:0;transform:scale(.2)}to{opacity:1;transform:scale(1)}}
+.link-flow{fill:none;stroke-width:.9;stroke-linecap:round;stroke-dasharray:2 26;opacity:.5;pointer-events:none;animation:flow var(--dur,2.4s) linear infinite}
+.node-pulse{fill:none;stroke:#FFD700;stroke-width:1;opacity:0;animation:breatheOut var(--breathe,4.5s) ease-out infinite;pointer-events:none}
+[data-motion="soft"] .link-flow{opacity:.3;animation-duration:calc(var(--dur,2.4s) * 2.2)}
+[data-motion="soft"] .node-pulse{animation:none;opacity:.18}
+[data-motion="off"] .link-flow,[data-motion="off"] .node-pulse{animation:none;opacity:0}
+[data-motion="off"] .enter{animation:none}
+.enter{animation:popIn .38s cubic-bezier(.2,.9,.3,1.2) both;transform-box:fill-box;transform-origin:center}
+/* 节点不再挂全局投影:参考实现只给高权重节点柔影,全挂就变成一串珠子 */
+[data-theme="paper"] .node{stroke-opacity:.9}
+.link-label{font-size:9.5px;fill:var(--dim);pointer-events:none;paint-order:stroke;stroke:var(--bg);stroke-width:3px;stroke-linejoin:round}
+/* 节点名压在白底/深底上都读得清:描一圈底色当光晕(paint-order:stroke) */
+.node-label{font-size:10.5px;opacity:.62;fill:var(--ink);pointer-events:none;text-anchor:middle;dominant-baseline:central;font-weight:600;paint-order:stroke;stroke:var(--bg);stroke-width:3.5px;stroke-linejoin:round}
+.node-labelfaint{fill:var(--dim);font-weight:500}
+#tooltip{position:fixed;z-index:200;background:var(--card-bg);backdrop-filter:blur(16px);border:1px solid var(--line);border-radius:11px;padding:12px 15px;max-width:340px;pointer-events:none;opacity:0;transition:opacity .15s;box-shadow:var(--shadow);max-height:70vh;overflow-y:auto}
+#tooltip.show{opacity:1}
+#tooltip h3{font-size:.84rem;color:var(--accent);margin-bottom:5px}
+#tooltip .row{font-size:.72rem;color:var(--dim);margin:2px 0;display:flex;justify-content:space-between;gap:12px}
+#tooltip .val{color:var(--ink);font-weight:600}
+#tooltip .rel-list{margin-top:6px;font-size:.7rem}
+#tooltip .rel-item{padding:3px 0;border-bottom:1px solid var(--line-soft);color:#cbd5e1}
+#empty-msg{position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);text-align:center;color:var(--faint)}
+#empty-msg h2{font-size:1.4rem;margin-bottom:8px}
+#empty-msg p{font-size:.88rem}
+#legend{position:fixed;bottom:16px;left:16px;z-index:100;background:var(--legend-bg);backdrop-filter:blur(10px);border:1px solid var(--line);border-radius:11px;padding:11px 14px;font-size:.7rem;max-width:262px;box-shadow:var(--shadow)}
+#legend .lg-title{font-size:.66rem;color:var(--faint);letter-spacing:.06em;margin:0 0 4px}
+#legend .lg-title+*{margin-top:0}
+#legend .grp{margin-top:9px}
+#legend .li{display:flex;align-items:center;gap:7px;margin:3px 0;color:var(--dim)}
+#legend .dot{width:10px;height:10px;border-radius:50%;flex:0 0 auto}
+#legend .bar{width:22px;height:0;border-top:2px solid var(--dim);flex:0 0 auto}
+#legend .note{display:block;margin-top:9px;color:var(--faint);line-height:1.55;font-size:.66rem}
+#evidence{position:fixed;right:16px;bottom:16px;z-index:150;width:342px;max-height:60vh;overflow-y:auto;background:rgba(19,28,46,.96);backdrop-filter:blur(12px);border:1px solid var(--line);border-radius:11px;padding:11px 14px;font-size:.72rem;line-height:1.55;display:none;box-shadow:0 12px 34px rgba(0,0,0,.55)}
+#evidence.show{display:block}
+#evidence .ev-head{display:flex;align-items:baseline;gap:8px}
+#evidence h3{font-size:.8rem;color:var(--accent);flex:1}
+#evidence .ev-close{border:none;background:none;color:var(--dim);cursor:pointer;font-size:.72rem;font-family:inherit;padding:0}
+#evidence .ev-close:hover{color:var(--accent)}
+#evidence .ev-meta{color:var(--faint);font-size:.66rem;margin-top:4px}
+#evidence .ev-note{color:var(--dim);margin-top:5px}
+#evidence .ev-chips{display:flex;flex-wrap:wrap;gap:6px;margin:8px 0 2px}
+#evidence .chip{background:var(--panel-2);border:1px solid var(--line);border-radius:999px;padding:2px 9px;color:var(--dim);cursor:pointer;font-size:.68rem;font-family:inherit}
+#evidence .chip:hover{border-color:var(--accent);color:var(--accent)}
+#evidence .chip.chip-on{border-color:var(--accent);color:var(--accent)}
+#evidence .mem{margin-top:6px;padding:6px 8px;border-left:2px solid var(--accent);border-radius:0 4px 4px 0;background:rgba(14,22,38,.85)}
+#evidence .mem .sum{color:var(--ink)}
+#evidence .mem .meta{color:var(--faint);font-size:.66rem;margin-top:3px}
+#evidence .mem .dead{color:var(--bad);font-weight:600}
+@media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+/* 幽灵层(只给人看的两层):影子边=灰虚线(史),联想对=细实线(中间层)。
+   两层都画在事实线**下面**,都用 pointer-events:stroke 让 <title> 原生提示能弹出来;
+   它们不是事实,所以视觉上必须一眼可辨(虚线/低透明度),别让人当成"她说过的话"。 */
+.ghost-layer{pointer-events:none}
+.ghost-link{fill:none;pointer-events:stroke}
+.ghost-link.shadow{stroke:var(--faint);stroke-width:1.1;stroke-dasharray:3 5;opacity:.5}
+.ghost-link.evidence{stroke:var(--accent);stroke-width:.9;opacity:.28}
+.ghost-range{width:64px}
+.ghost-val{color:var(--faint);font-size:.72rem;min-width:10px;display:inline-block}
+/* 引擎还没给这两层时(比如插件没重挂载):按钮变灰、读数写 "—" —— 别装成能点 */
+.ghost-missing{opacity:.45;cursor:not-allowed}
+</style></head><body>
+<div id="toolbar">
+  <h1>记忆图谱</h1>
+  <a href="/echo/">← 审查台</a>
+  <div class="sep"></div>
+  <span class="glabel">搜</span>
+  <input id="search" type="text" placeholder="实体名…" oninput="onSearch(this.value)">
+  <span class="sep"></span>
+  <span id="type-btns"></span>
+  <span class="sep"></span>
+  <span class="glabel">权重≥</span>
+  <input id="weight-slider" type="range" min="0" max="10" value="0" step="1" oninput="onWeightFilter(+this.value)">
+  <span id="weight-val">0</span>
+  <div class="sep"></div>
+  <button id="ghost-shadow-btn" onclick="cycleGhost('shadow')" title="影子边 = 3a 的历史(已冻结):「两个词一起出现过」的统计,**不是他说过的话**。只看:不进检索、不进力导向、不算进上面的关系/连线">史:关</button>
+  <input id="ghost-shadow-min" class="ghost-range" type="range" min="1" max="4" value="1" step="1" oninput="onGhostMin('shadow',+this.value)" title="影子边权重下限(1–4;活库里 1 分 36 条 / 2 分 10 条 / 3 分 1 条 / 4 分 1 条)">
+  <span id="ghost-shadow-val" class="ghost-val">1</span>
+  <button id="ghost-evi-btn" onclick="cycleGhost('evidence')" title="联想对 = 共现证据层(中间层,活的):同一轮 / 同一天一起出现过。只看:不进检索、不进力导向">联想:关</button>
+  <input id="ghost-evi-min" class="ghost-range" type="range" min="1" max="5" value="1" step="1" oninput="onGhostMin('evidence',+this.value)" title="联想对要「被几条证据支持」才画(活库里 1 条 38 个 / 2 条 3 个 / 3 条 1 个 / 5 条 1 个)">
+  <span id="ghost-evi-val" class="ghost-val">1</span>
+  <div class="sep"></div>
+  <button id="label-btn" onclick="cycleLabels()" title="节点名显示策略">标签:全部</button>
+  <button id="motion-btn" onclick="cycleMotion()" title="动效:线的流动 / 新记忆入场 / 核心锚定呼吸">动效:开</button>
+  <button id="theme-btn" onclick="cycleTheme()" title="换一套配色,挑你觉得好看的那个">配色:稿纸</button>
+  <button id="reset-btn" onclick="resetView()">↺ 重置</button>
+  <div id="stats-bar">
+    <span>节点 <span class="sv" id="sn">0</span></span>
+    <span title="关系条数(含平行关系)">关系 <span class="sv" id="se">0</span></span>
+    <span title="画布上真正画出来的线:平行关系合并成一束">连线 <span class="sv" id="sl">0</span></span>
+    <span style="color:var(--ok)">清醒 <span class="sv" style="color:var(--ok)" id="sa">0</span></span>
+    <span style="color:var(--warn)">模糊 <span class="sv" style="color:var(--warn)" id="sd">0</span></span>
+    <span style="color:var(--bad)">遗忘 <span class="sv" style="color:var(--bad)" id="sr">0</span></span>
+    <span title="幽灵层 · 影子边(3a 史,已冻结):画出来的线 / 端点不在图上而略去 / 被阈值藏起" style="color:var(--faint)">史 <span class="sv" style="color:var(--faint)" id="ss">0</span></span>
+    <span title="幽灵层 · 联想对(证据层,中间层):画出来的线 / 端点不在图上而略去 / 被阈值藏起" style="color:var(--faint)">联想 <span class="sv" style="color:var(--faint)" id="sg">0</span></span>
+    <span id="live" style="color:var(--faint)">连接中…</span>
+  </div>
+</div>
+<div id="tooltip"></div>
+<div id="evidence"></div>
+<div id="empty-msg" style="display:none"><h2>🌌 暂无记忆数据</h2><p>和机器人聊几句,记忆图谱就会在这里生长</p></div>
+<div id="legend">
+  <div class="lg-title">节点</div>
+  <div class="li"><div class="dot" data-type="person"></div> 人物</div>
+  <div class="li"><div class="dot" data-type="habit"></div> 习惯</div>
+  <div class="li"><div class="dot" data-type="preference"></div> 偏好</div>
+  <div class="li"><div class="dot" data-type="event"></div> 事件</div>
+  <div class="li"><div class="dot" data-type="concept"></div> 概念</div>
+  <div class="li"><div class="dot" style="background:none;border:2px solid #FFD700;box-shadow:0 0 6px #FFD700"></div> 核心锚定</div>
+  <div class="grp"><div class="lg-title">边</div></div>
+  <div class="li"><div class="bar" style="border-color:#22c55e"></div> 清醒</div>
+  <div class="li"><div class="bar" style="border-color:#f59e0b"></div> 模糊</div>
+  <div class="li"><div class="bar" style="border-color:#ef4444;border-top-style:dashed"></div> 遗忘(虚线)</div>
+  <div class="note">
+    圆大小=关联权重(次线性压缩,枢纽不再吃掉画面),边粗细=权重,边颜色=时间状态,箭头=关系方向。
+    激活度全部是打开页面时<b>现算</b>的:库里物化的 activation 列 DSH 从不更新(节点恒为 0,边是导入时的旧快照),别当存储真值看。
+    <span style="color:var(--accent)">点节点或点边 → 依据 → 再点 #编号 展开她当时说的原话。</span>
+  </div>
+</div>
+<svg id="canvas"><defs>
+  <filter id="glow"><feGaussianBlur stdDeviation="2.5" result="blur"/><feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+  <radialGradient id="bg-grad" cx="50%" cy="50%" r="60%"><stop offset="0%" stop-color="#131c2e" stop-opacity=".55"/><stop offset="100%" stop-color="#0b1220" stop-opacity="0"/></radialGradient>
+  <pattern id="dots" width="26" height="26" patternUnits="userSpaceOnUse"><circle cx="1.2" cy="1.2" r="1.2" fill="#1e2b45"/></pattern>
+  <!-- 铅笔抖动(照抄 contextual-neural-map 的 pencil/sketchLine):feTurbulence +
+       feDisplacementMap 把数学直线和正圆轻微推歪 —— 这一下就把 CAD 感变成手画感。
+       只在稿纸主题挂(见 CSS [data-theme=paper] .link/.node)。 -->
+  <filter id="pencil" x="-20%" y="-20%" width="140%" height="140%">
+    <feTurbulence type="turbulence" baseFrequency="0.03" numOctaves="4" result="noise"></feTurbulence>
+    <feDisplacementMap in="SourceGraphic" in2="noise" scale="2.2" xChannelSelector="R" yChannelSelector="G"></feDisplacementMap>
+  </filter>
+  <filter id="sketchLine" x="-10%" y="-10%" width="120%" height="120%">
+    <feTurbulence type="turbulence" baseFrequency="0.04" numOctaves="3" result="noise"></feTurbulence>
+    <feDisplacementMap in="SourceGraphic" in2="noise" scale="2.6" xChannelSelector="R" yChannelSelector="G"></feDisplacementMap>
+  </filter>
+
+</defs><rect x="0" y="0" width="100%" height="100%" fill="url(#dots)" style="opacity:var(--dots-op)"></rect>
+<rect x="0" y="0" width="100%" height="100%" fill="url(#bg-grad)" pointer-events="none" style="opacity:var(--vignette-op)"></rect></svg>
+<script>
+/* Echo 记忆图谱 — AstrBot /memory_graph.html 的 DSH 移植(v0.13.0)
+ * 力导向全页图谱:数据面 /api/echo/graph(同源,引擎超集字段),
+ * 实时面 SSE 审计推送 + 10s 轮询兜底(原版是 WS + 5s 兜底)。
+ * 交互全保:拖拽定点、滚轮缩放、悬停聚焦、关系清单 tooltip、
+ * 搜索(含一跳邻居)、类型过滤、权重滑杆、渲染间位置保持。
+ * v0.16.0 M1/M5:边多带 evidenceIds(这段关系从哪几条记忆里学来的)——
+ * 点节点/点边摊开成 #编号,再点编号取那条原话(/api/echo/memories?ids=);
+ * 图例里写明激活度是现算的(库里物化列恒 0)。
+ * tooltip 构建:DOM 节点 + textContent,不拼 innerHTML。 */
+'use strict'
+const API = '/api/echo/graph'
+/* 类型配色按主题换一套。参考 contextual-neural-map 的做法:亮底那套**降饱和**(深棕/墨绿/
+   绛红/靛紫/暖灰)在图里是"墨点",不是霓虹;深底那套才用亮色(sigma.js 的深底风格)。
+   两套都保证 5 个类型区分得开 —— 类型靠颜色认,状态(清醒/模糊/遗忘)靠线的虚线与透明度认。 */
+const TYPE_PALETTES = {
+  paper: { person: '#a16207', habit: '#0f766e', preference: '#9d174d', event: '#5b21b6', concept: '#78716c' },
+  obsidian: { person: '#eab308', habit: '#22d3ee', preference: '#f472b6', event: '#a78bfa', concept: '#94a3b8' },
+  focus: { person: '#eab308', habit: '#7dd3fc', preference: '#f472b6', event: '#a78bfa', concept: '#8892a0' }
+}
+/** 边的三档颜色(清醒/模糊/遗忘)。亮底那套同样是降饱和的灰棕,
+ *  深底那套才用绿橙红 —— 数值参考 sigma 深色示例的低透明度做法。 */
+const EDGE_PALETTES = {
+  paper: { ok: [138, 130, 121], warn: [176, 133, 90], bad: [168, 99, 92] },
+  obsidian: { ok: [74, 222, 128], warn: [251, 191, 36], bad: [248, 113, 113] },
+  focus: { ok: [74, 222, 128], warn: [251, 191, 36], bad: [248, 113, 113] }
+}
+let TYPE_COLORS = TYPE_PALETTES.paper
+const TYPE_LABELS = { person:'人物', habit:'习惯', preference:'偏好', event:'事件', concept:'概念' }
+const TEMPORAL_LABELS = { enduring:'长期有效', current:'当前有效', historical:'过去事件', planned:'未来计划', time_unknown:'时间未知' }
+let graphData = { nodes: [], edges: [] }
+let simulation = null
+let activeTypes = null   // Set,首帧按数据里的类型初始化
+let weightMin = 0
+let searchTerm = ''
+let nodePositions = {}
+let currentZoom = null
+let labelMode = 0        // 0 全部 / 1 重要的 / 2 关(工具条那个按钮)
+const LABEL_MODES = ['全部', '重要的', '关']
+// 幽灵层(2026-10-02 他:「影子边为什么不在图谱里显示 + 加权重过滤工具」):
+//   shadow   = 3a 的历史(已冻结):「两个词一起出现过」的统计,**不是他说过的话**
+//   evidence = 共现证据层(中间层,活的):权重 = 被几条证据支持
+// 两层都只给人看:默认**关**(默认视图与以前一模一样)、不进检索、不进力导引/统计栏。
+const GHOST_LABELS = { shadow: '史', evidence: '联想' }
+const GHOST_MAX = { shadow: 4, evidence: 5 }
+let ghost = { shadow: { on: false, min: 1 }, evidence: { on: false, min: 1 } }
+function ghostSelect (layers, visibleIds, opts) {
+  const pick = (block, want, own) => {
+    const rows = (((layers || {})[block] || {}).rows) || []
+    const kept = []
+    let dropped = 0
+    let hidden = 0
+    for (const r of rows) {
+      if (!visibleIds.has(r.source) || !visibleIds.has(r.target)) { dropped += 1; continue }
+      if ((own(r) || 0) < want) { hidden += 1; continue }
+      kept.push(r)
+    }
+    return { rows: kept, dropped, hidden }
+  }
+  const out = { shadow: { rows: [], dropped: 0, hidden: 0 }, evidence: { rows: [], dropped: 0, hidden: 0 } }
+  const o = opts || {}
+  if (o.shadow && o.shadow.on) out.shadow = pick('shadow', o.shadow.min, (r) => r.weight)
+  if (o.evidence && o.evidence.on) out.evidence = pick('evidence', o.evidence.min, (r) => r.support)
+  return out
+}
+// ---- 幽灵层结束 ----
+// 三套皮(参考开源实现后重做:稿纸=contextual-neural-map 的纸感铅笔风,深空=sigma/Obsidian
+// 的深底低透明度风,焦点=最安静的近黑)。默认稿纸 —— 它是唯一一套"做了设计"的亮底。
+const THEMES = ['paper', 'obsidian', 'focus']
+const THEME_LABELS = { paper: '稿纸', obsidian: '深空', focus: '焦点' }
+let themeMode = THEMES[0]
+try {
+  const saved = localStorage.getItem('echo-graph-theme')
+  if (THEMES.indexOf(saved) >= 0) themeMode = saved
+} catch { /* 隐私模式下 localStorage 会抛,不影响看图 */ }
+function applyTheme () {
+  if (document.documentElement) document.documentElement.setAttribute('data-theme', themeMode)
+  TYPE_COLORS = TYPE_PALETTES[themeMode] || TYPE_PALETTES.paper
+  // 图例色点跟着主题走(写死的亮金色在纸底上会刺眼)
+  for (const dot of document.querySelectorAll('#legend .dot[data-type]')) {
+    const t = dot.getAttribute('data-type')
+    dot.style.background = TYPE_COLORS[t] || TYPE_COLORS.concept
+    dot.style.borderColor = TYPE_COLORS[t] || TYPE_COLORS.concept
+  }
+  const b = $('theme-btn')
+  if (b) b.textContent = '配色:' + THEME_LABELS[themeMode]
+}
+function cycleTheme () {
+  themeMode = THEMES[(THEMES.indexOf(themeMode) + 1) % THEMES.length]
+  try { localStorage.setItem('echo-graph-theme', themeMode) } catch { }
+  applyTheme()
+}
+// 动效三档。默认"开",记 localStorage;prefers-reduced-motion 由 CSS 兜底关掉。
+const MOTION_MODES = ['on', 'soft', 'off']
+const MOTION_LABELS = { on: '开', soft: '弱', off: '关' }
+let motionMode = MOTION_MODES[0]
+try {
+  const savedM = localStorage.getItem('echo-graph-motion')
+  if (MOTION_MODES.indexOf(savedM) >= 0) motionMode = savedM
+} catch { }
+function applyMotion () {
+  if (document.documentElement) document.documentElement.setAttribute('data-motion', motionMode)
+  const b = $('motion-btn')
+  if (b) b.textContent = '动效:' + MOTION_LABELS[motionMode]
+}
+function cycleMotion () {
+  motionMode = MOTION_MODES[(MOTION_MODES.indexOf(motionMode) + 1) % MOTION_MODES.length]
+  try { localStorage.setItem('echo-graph-motion', motionMode) } catch { }
+  applyMotion()
+}
+// 由 render() 每次重建时重新挂上(它们要闭包住这一帧的图层与缩放)
+let labelVisible = () => true
+let applyLabels = () => {}
+let currentLinks = []    // 这一帧的边(source/target 已被 d3 换成节点对象),悬停找邻居用
+/** 这一帧的两个幽灵层(只给人看:影子边=3a 史 / 联想对=证据层)。 */
+let currentGhosts = { shadow: { rows: [], dropped: 0, hidden: 0 }, evidence: { rows: [], dropped: 0, hidden: 0 } }
+const seenIds = new Set()     // 画过的节点 id(动效:只有新的才入场)
+let pendingEnter = new Set()  // 这一帧要"长出来"的节点 id(loadData 填,render 用一次)
+
+/* ---- 受力参数(2026-09-26 重做)--------------------------------------------
+ * 他说「受カ也有问题」。旧配方四个病灶,逐个换掉:
+ *   ① 连线理想长度 = 120/权重*2 ⇒ 重边只剩 24px,而两个圆的半径就有 19px ——
+ *      等于贴在一起("一对紧挨着");更糟的是关系越强画得越挤(权重 10 → 24px,
+ *      权重 1 → 240px),强度与距离的关系是反的。现在:越重越近,但**有地板**
+ *      (权重 10 → 78px,权重 1 → 134px),而且度数越高边越长(见 linkDistance)。
+ *   ② 拉力每条恒 .4 ⇒ 两个高连接度节点之间互相猛拽(活库里 用户↔章鱼小丸子
+ *      各自度数 ≥6,谁也不让谁)。现在按两端度数的**较小值**归一:
+ *      一对高连接度节点之间只剩 1/6 ≈ 0.17,而叶子连枢纽仍是 1 —— 星形结构
+ *      要靠它撑住,归一到 0 反而会散成一盘沙。
+ *   ③ 圆半径 sqrt(w)*6(权重 10 → 19px)+ 碰撞只 +4 ⇒ 枢纽又大又把邻居挤在一起,
+ *      而节点名画在圆下方 14px,全叠成一坨。现在半径次线性压缩(10→14.5px),
+ *      碰撞半径另外留 16px 给文字。
+ *   ④ forceCenter 把质心硬钉在画面正中(它是位移不是力),加上恒 -300 的斥力 ⇒
+ *      枢纽周围没有余地,结构被压平。现在换成很弱的 forceX/forceY 向心 +
+ *      度数越高斥力越大的 charge(distanceMax 兜住远处,免得全图被推飞)。
+ * 这张表是**纯函数**,不碰 d3 —— tests/graph-force.test.js 直接把它抠出来算性质,
+ * 所以别再往里塞依赖。 */
+const GRAPH_TUNING = {
+  wMin: 1,
+  wMax: 10,
+  norm (w) {
+    const v = Number(w)
+    return Math.max(this.wMin, Math.min(this.wMax, isFinite(v) && v > 0 ? v : this.wMin)) / this.wMax
+  },
+  // 半径:4.5 ~ 13px。参考实现(contextual-neural-map)的节点就是 4~20px、多数 5.5~10px,
+  // 图看着像"星座"而不是"积木";我前几版 11~23px 的大实心圆正是"积木感"的主因。
+  // 权重仍然决定大小(枢纽一眼看得出),只是整体缩到点的量级。
+  radiusOf (w) { return (this.radiusBase ?? 4.5) + (this.radiusScale ?? 8.5) * Math.sqrt(this.norm(w)) },
+  // 边宽:**发丝级** 0.6 ~ 1.5px。参考实现是 0.5 / 1.2 / 1.8px —— 好看的图里线几乎看不见,
+  // 靠的是"结构"而不是"粗细"。强度信息保留(0.6→1.5px),但不再靠它撑视觉。
+  // 激活度 0(遗忘)的边再压 30% 并走虚线。
+  linkWidth (w, activation) {
+    let base = (this.edgeWidthMin ?? 0.6) + this.norm(w) * ((this.edgeWidthMax ?? 1.5) - (this.edgeWidthMin ?? 0.6))
+    if ((Number(activation) || 0) <= 0) base = Math.max(.4, base * .7)
+    return Math.round(base * 100) / 100
+  },
+  // 流动速度(动效):权重越高,线上的虚线跑得越快 —— "记忆越强,流得越急"。
+  // 3.4s(弱)→ 1.6s(强),别更快:再快就成了蚂蚁爬行,看着烦。
+  flowDuration (w) { const slow = this.flowSlowSec ?? 3.4; const fast = this.flowFastSec ?? 1.6; return Math.round((slow - (slow - fast) * this.norm(w)) * 100) / 100 },
+  // 入场动画的错峰延迟:第 i 个新节点延迟多少毫秒(封顶 320ms,免得后半个图等太久)
+  enterDelay (i) { return Math.min(this.enterDelayMaxMs ?? 320, Math.max(0, Number(i) || 0) * 22) },
+  /* ---- 夹角与边间斥力(2026-09-26 深夜,他:「把一个点转一圈,另外一条线不动,
+   * 两条线中间不要成锐角」)----------------------------------------------------
+   * 他说的是布局算法里的 **angular resolution**:我原来的力只有连线弹簧 + 斥力 +
+   * 碰撞,**没有任何一项管两条边的夹角** —— 实测活库枢纽(度 12)有 7 个夹角 < 30°,
+   * 最小 0.3°(两条边叠在一起)。下面这两条自定义力补上:
+   *   ① angles:同一个节点上,相邻两条边的夹角往 360/度 均分推(把挤在一起的转开)
+   *   ② edgeRepel:不相邻的两条边离得太近就互相推开(他:「边之间也有一定的斥力」)
+   * 两条都是确定性纯几何,没有随机数 —— 布局必须可复现,电池才钉得住。 */
+  angleUniform (deg) { return 360 / Math.max(2, Number(deg) || 2) },
+  // 判据:低于均分的 60% 就算"挤在一起了"(度 2 → 108°、度 3 → 72°、度 12 → 18°)
+  angleFloor (deg) { return this.angleUniform(deg) * 0.6 },
+  // 每步给邻居多大的"切向速度"(弧度/步的量级)。这个数**是扫出来的**(实测值):
+  //   强度   最挤的那格/理想   整图最大半径   他的"绕一圈"场景最小夹角
+  //   0.20     0.43            455px(92% 半高)   136.8°
+  //   0.30     0.60            465px(94% 半高)   147.5°   ← 取这个
+  //   0.45     0.66            519px(105% 半高)  154.0°   × 出画布了
+  // 拿 0.30:最挤的那格正好达到判据(均分的 60%),而图还在画面里。
+  angleStrength: 0.3,
+  // 不相邻两条边的相互斥力:最近距离 < edgeRepelRadius 就推开,强度按距离线性衰减
+  edgeRepelRadius: 110,
+  edgeRepelStrength: 0.6,
+  /** 两线段是否相交(含共线重叠)。纯几何:方向叉积符号 + 边界检查。 */
+  segmentsCross (p1, p2, p3, p4) {
+    const o = (a, b, c) => {
+      const v = (b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x)
+      return Math.abs(v) < 1e-12 ? 0 : (v > 0 ? 1 : -1)
+    }
+    const onSeg = (a, b, c) => Math.min(a.x, b.x) - 1e-9 <= c.x && c.x <= Math.max(a.x, b.x) + 1e-9 &&
+      Math.min(a.y, b.y) - 1e-9 <= c.y && c.y <= Math.max(a.y, b.y) + 1e-9
+    const d1 = o(p3, p4, p1); const d2 = o(p3, p4, p2)
+    const d3 = o(p1, p2, p3); const d4 = o(p1, p2, p4)
+    if (d1 !== d2 && d3 !== d4) return true
+    if (d1 === 0 && onSeg(p3, p4, p1)) return true
+    if (d2 === 0 && onSeg(p3, p4, p2)) return true
+    if (d3 === 0 && onSeg(p1, p2, p3)) return true
+    if (d4 === 0 && onSeg(p1, p2, p4)) return true
+    return false
+  },
+  /** 两线段之间的最近距离(返回距离与"从 A 推向 B"的单位方向)。纯几何,可单测。
+   *  端点-线段的最小值能处理"平行靠近"和"端点对着端点",但**量不出交叉**
+   *  (端点离交叉点很远)—— 所以先判相交,相交就是 0(交给布局:交叉不需要推开)。 */
+  closestSegments (a1, a2, b1, b2) {
+    if (this.segmentsCross(a1, a2, b1, b2)) return { d: 0, dir: { x: 0, y: 0 } }
+    const ptSeg = (p, q1, q2) => {
+      const dx = q2.x - q1.x; const dy = q2.y - q1.y
+      const len2 = dx * dx + dy * dy
+      let t = len2 > 0 ? ((p.x - q1.x) * dx + (p.y - q1.y) * dy) / len2 : 0
+      t = Math.max(0, Math.min(1, t))
+      const cx = q1.x + dx * t; const cy = q1.y + dy * t
+      return { d: Math.hypot(p.x - cx, p.y - cy), cx, cy }
+    }
+    const cands = [
+      { ...ptSeg(a1, b1, b2), from: a1 },
+      { ...ptSeg(a2, b1, b2), from: a2 },
+      { ...ptSeg(b1, a1, a2), from: b1, flip: true },
+      { ...ptSeg(b2, a1, a2), from: b2, flip: true }
+    ]
+    let best = cands[0]
+    for (const c of cands) if (c.d < best.d) best = c
+    // 方向:从"更近的那条边的点"指向另一条边的投影点;极小距离给个确定性的备用法向
+    let ux = best.from.x - best.cx; let uy = best.from.y - best.cy
+    let nrm = Math.hypot(ux, uy)
+    if (nrm < 1e-6) {
+      ux = a2.y - a1.y; uy = -(a2.x - a1.x); nrm = Math.hypot(ux, uy) || 1
+    }
+    return { d: best.d, dir: { x: ux / nrm, y: uy / nrm } }
+  },
+  // 理想边长:重=近,但地板 95px(旧版重边只有 24px,贴脸)
+  // 再按**邻居数**给地方:度数高的端点,它的邻居要沿圆周排开 ——
+  // R ≥ roomFactor×deg×邻居半径/π。这条是仿真逼出来的(活库那个度数 12 的枢纽,
+  // 光靠 95~165px 的权重基线排不下 12 个邻居,圆周不够,圆还是会叠)。
+  // 需要的圆周按**中等节点**估,不用枢纽自己的大圆 —— 用后者会把枢纽到叶子的距离
+  // 算成 208px,一圈等距排开就是朵蒲公英(他截图里那张)。
+  linkDistance (w, degA, degB, seed) {
+    // 半径变小之后(4.5~13px),同样的距离显得更空 —— 基线也跟着提上来,让图仍然是铺开的
+    const base = 125 + 85 * (1 - this.norm(w))
+    const busy = Math.max(1, Number(degA) || 1, Number(degB) || 1)
+    const need = this.roomFactor * busy * (this.radiusOf(4) + 14) / Math.PI
+    const d = Math.max(base, Math.min(this.distMax, need))
+    // 打破"蒲公英":枢纽的邻居如果目标距离完全一样,就会排成一条完美等距的圆环 ——
+    // 他截图里那张就是。给每条边一个**确定性**的微扰(±14%,按边的 key 哈希,
+    // 不用 Math.random —— 布局要可复现,电池才钉得住)。
+    if (seed === undefined) return d
+    return d * (0.86 + 0.28 * this.hash01(seed))
+  },
+  roomFactor: 1.4,
+  distMax: 380,
+  /** 0~1 的确定性哈希(同一个 key 永远同一个值)。 */
+  hash01 (seed) {
+    const x = Math.sin(Number(seed) || 0) * 43758.5453
+    return x - Math.floor(x)
+  },
+  /** 边的 key(两端 id 拼起来)→ 一个数,当微扰的种子。 */
+  seedOf (key) {
+    const s = String(key || '')
+    let h = 0
+    for (let i = 0; i < s.length; i += 1) h = (h * 31 + s.charCodeAt(i)) % 100000
+    return h
+  },
+  /* ---- 弧线(2026-09-26 深夜,他说"就是简单几何图形硬拼在一起,垃圾积木")----
+   * 直线 + 圆心连线 = 棍子顶珠子,接口是硬断口,一眼就是拼的。改成**弧线**:
+   * 控制点从弦中点沿法线偏移 k×|弦|,k 由边的 key 哈希决定正负(±0.16)——
+   * 相邻的边往两侧弯,不互相压,也不会弯成乱麻。
+   * 曲率是纯函数,能单测:端点必须精确落在两端(否则线头会离圆心一截)。 */
+  curveOf (key) { return (this.hash01(this.seedOf(key) * 7.13) * 2 - 1) * 0.16 },
+  arcControl (a, b, k) {
+    const dx = b.x - a.x; const dy = b.y - a.y
+    return { x: (a.x + b.x) / 2 - dy * (k || 0), y: (a.y + b.y) / 2 + dx * (k || 0) }
+  },
+  arcPath (a, b, k) {
+    const c = this.arcControl(a, b, k)
+    return 'M' + a.x + ',' + a.y + 'Q' + c.x + ',' + c.y + ' ' + b.x + ',' + b.y
+  },
+  /** 弧上 t 处的点(t=0 起点、t=1 终点、t=.5 中点)—— 关系名和流向标都挂它上面。 */
+  arcPoint (a, b, k, t) {
+    const c = this.arcControl(a, b, k)
+    const u = 1 - t
+    return {
+      x: u * u * a.x + 2 * u * t * c.x + t * t * b.x,
+      y: u * u * a.y + 2 * u * t * c.y + t * t * b.y
+    }
+  },
+  /** 弧上 t 处的切线方向(度)—— 流向标要顺着线转,不然像贴上去的。 */
+  arcAngle (a, b, k, t) {
+    const c = this.arcControl(a, b, k)
+    return Math.atan2(2 * (1 - t) * (c.y - a.y) + 2 * t * (b.y - c.y),
+      2 * (1 - t) * (c.x - a.x) + 2 * t * (b.x - c.x)) * 180 / Math.PI
+  },
+  // 拉力:按两端较小的度数归一(枢纽不能靠边数压死邻居),地板 0.06
+  linkStrength (degA, degB) {
+    const d = Math.max(1, Math.min(14, Math.min(Number(degA) || 1, Number(degB) || 1)))
+    return Math.max(0.06, 1 / d)
+  },
+  // 斥力:度数越高推得越开(枢纽要给自己和一圈邻居留地)
+  chargeOf (deg) { return -260 - 34 * Math.sqrt(Math.max(0, Number(deg) || 0)) },
+  chargeMax: 900,
+  // 碰撞半径 = 圆半径 + 文字让位(16px 够放 11.5px 的节点名)
+  collideOf (w) { return this.radiusOf(w) + 16 },
+  // 向心力(替代 forceCenter:那个是把质心硬钉住,不是力)
+  centerPull: 0.035,
+  velocityDecay: 0.36,
+  // 预跑时每步的速度上限(px/步)。显式欧拉在刚度大时会发散,夹住它就只是"慢"。
+  maxStep: 40,
+  // 标签显示策略:默认**全部显示**(名字就是这个页面的内容 ——
+  // 2026-09-26 那版默认只显权重 ≥6 的,17 个节点里只有 3 个有名字,
+  // 剩下全是没名字的圆点,他看着当然"丑")。按钮循环:全部 → 重要的 → 关。
+  labelAlways: 6,
+  labelZoomed: 1,
+  labelFor (w, mode, zoomK) {
+    if (mode === 2) return false
+    const wt = Number(w) || 0
+    if (mode === 1) return wt >= this.labelAlways     // 「重要的」
+    return wt >= this.labelZoomed                     // 「全部」
+  }
+}
+
+/* ---- 显示调参的数据覆盖(P3-c)----------------------------------------------
+ * 上面那张表原来**只有页面自己一份真值**,而面板 `#/tuning` 早就能写
+ * `graph.json.display`(`web/views/tuning.js:75-85` 逐个照抄、连行号都标了)——
+ * 两份真值必然漂。现在页面读数据文件,面板改的数下一屏(10s 轮询)生效。
+ *
+ * 纪律(与 P3 的等价性要求同一条):**空 / 缺 / 坏 / 脏值 ⇒ 一个数都不动**,
+ * 页面行为与迁移前逐位一致 —— 出厂值仍写在上面的 GRAPH_TUNING 里(用 `??` 兜着),
+ * 所以这张表单独抠出来(tests/graph-force.test.js 就是这么干的)照样是原值。
+ * 只认**数字**或**非空白数字串**(布尔 / 数组 / 对象 / NaN 一律当没给)。
+ * 纯函数,不碰 DOM 也不联网。
+ */
+
+/** display 的九个键(与 `web/views/tuning.js:75-85` 的 DISPLAY_FIELDS **逐键对齐**,契约冻结)。 */
+const DISPLAY_KEYS = ['wMin', 'wMax', 'radiusBase', 'radiusScale', 'edgeWidthMin',
+  'edgeWidthMax', 'flowSlowSec', 'flowFastSec', 'enterDelayMaxMs']
+
+/** 把 `graph.json.display` 的数值盖到 `T` 上,返回被采纳的键数(空 / 坏 ⇒ 0)。
+ *  只认**数字**或**非空白数字串**(数组 / 对象 / 空白串一律当没给 —— `Number([])` 是 0,
+ *  放进来就等于把一个空数组读成"半径系数 0")。 */
+function applyDisplayTuning (T, display) {
+  if (display === null || typeof display !== 'object' || Array.isArray(display)) return 0
+  let n = 0
+  for (const key of DISPLAY_KEYS) {
+    const raw = display[key]
+    let num = NaN
+    if (typeof raw === 'number') num = raw
+    else if (typeof raw === 'string' && raw.trim() !== '') num = Number(raw)
+    if (!Number.isFinite(num)) continue
+    T[key] = num
+    n += 1
+  }
+  return n
+}
+
+/** 现读 `graph.json` 的 display 段(只读;读不到 ⇒ 出厂值,照常画)。 */
+async function loadDisplayTuning () {
+  try {
+    const r = await fetch('/api/echo/data/graph.json')
+    const body = await r.json()
+    applyDisplayTuning(GRAPH_TUNING, body && body.value ? body.value.display : null)
+  } catch (e) { /* 读不到就用代码里那份默认 —— 页面不许因此白屏 */ }
+}
+
+const $ = (id) => document.getElementById(id)
+function el (tag, cls, text, style) {
+  const n = document.createElement(tag)
+  if (cls) n.className = cls
+  if (text !== undefined && text !== null) n.textContent = String(text)
+  if (style) for (const [k, v] of Object.entries(style)) n.style[k] = v
+  return n
+}
+function stateLabel (a) { return a >= 50 ? '清醒' : a >= 10 ? '模糊' : '遗忘' }
+function stateColor (a) { return a >= 50 ? '#22c55e' : a >= 10 ? '#f59e0b' : '#ef4444' }
+function fmtHalfLife (h) { return h >= 24 ? (h / 24).toFixed(1) + '天' : h.toFixed(1) + '小时' }
+function fmtClock (ts) { return ts > 0 ? new Date(ts * 1000).toLocaleString('zh-CN') : '时间未知' }
+
+/* ---- v0.16.0 M1/M5:「依据」下钻 -------------------------------------------
+ * 边的 evidenceIds 是「这段关系是从哪几条情景记忆里学来的」;点节点/点边
+ * 把它摊成一排 #编号,再点编号取那一条原话。
+ * 三条纪律:①老数据没有这个字段 → 一律当空数组,提示「追不回原话」而不是
+ * 报错;②取不到只落在这一个编号的气泡里,图谱与面板照常 —— 下钻失败绝不
+ * 能把整页拖崩;③面板 DOM 全部用 textContent 搭,不拼 innerHTML。 */
+const memCache = new Map()   // 编号 → { state:'loading'|'ok'|'empty'|'error', row }
+let evidenceTarget = null    // { kind:'edge'|'bundle'|'node', id, ids? }
+let bundleEdges = new Map()   // 束 key → 该束里的全部边(平行关系合并后,点击要展开这一串)
+
+function nodeById (id) { return graphData.nodes.find((n) => n.id === id) || null }
+function edgeById (id) { return graphData.edges.find((e) => e.id === id) || null }
+function nameOf (id) { const n = nodeById(id); return n ? n.name : String(id) }
+
+// 节点的依据 = 所有关联边 evidenceIds 的并集(去重保序)。依据落在边上,
+// 节点自己没有回指列 —— 只能这样汇总。
+function nodeEvidenceIds (id) {
+  const out = []
+  for (const e of graphData.edges) {
+    if (e.source !== id && e.target !== id) continue
+    for (const mid of (Array.isArray(e.evidenceIds) ? e.evidenceIds : [])) {
+      if (out.indexOf(mid) < 0) out.push(mid)
+    }
+  }
+  return out
+}
+function selectionEvidenceIds () {
+  if (!evidenceTarget) return []
+  if (evidenceTarget.kind === 'node') return nodeEvidenceIds(evidenceTarget.id)
+  if (evidenceTarget.kind === 'bundle') {
+    // 一束里可能有好几条平行关系:依据取并集,不能只认权重最大的那条
+    const out = []
+    for (const e of (bundleEdges.get(evidenceTarget.id) || [])) {
+      for (const mid of (Array.isArray(e.evidenceIds) ? e.evidenceIds : [])) {
+        if (out.indexOf(mid) < 0) out.push(mid)
+      }
+    }
+    return out
+  }
+  const e = edgeById(evidenceTarget.id)
+  return e && Array.isArray(e.evidenceIds) ? e.evidenceIds : []
+}
+
+function showEvidence (kind, id) {
+  evidenceTarget = { kind, id }
+  renderEvidence()
+}
+function hideEvidence () {
+  evidenceTarget = null
+  $('evidence').classList.remove('show')
+}
+function loadMemory (id) {
+  const hit = memCache.get(id)
+  if (hit && (hit.state === 'loading' || hit.state === 'ok')) return
+  memCache.set(id, { state: 'loading' })
+  renderEvidence()
+  fetch('/api/echo/memories?ids=' + encodeURIComponent(id))
+    .then((r) => (r.ok ? r.json() : Promise.reject(new Error('HTTP ' + r.status))))
+    .then((d) => {
+      const row = d && Array.isArray(d.rows) && d.rows.length > 0 ? d.rows[0] : null
+      memCache.set(id, row ? { state: 'ok', row } : { state: 'empty' })
+      renderEvidence()
+    })
+    .catch(() => { memCache.set(id, { state: 'error' }); renderEvidence() })
+}
+
+// 一条依据的原话:摘要 + 层 + 时间 + 「已被取代」。字段全带兜底 ——
+// store 的两条读取路径字段不完全一样(有的只带 isActive,有的只带
+// supersededBy),缺字段不能让面板崩,也不能让旧话看着像现役事实。
+function memoryCard (id, m) {
+  if (m.state === 'loading') return el('div', 'ev-note', '#' + id + ' 读取中…')
+  if (m.state === 'error') return el('div', 'ev-note', '#' + id + ' 取不到(记忆库离线或这条已不可达)—— 点编号可重试')
+  if (m.state === 'empty') return el('div', 'ev-note', '#' + id + ' 已经不在了(可能被物理清理)—— 这条依据只剩回指')
+  const row = m.row || {}
+  const learned = (row.learnedAt || 0) > 0 ? row.learnedAt : (row.timestamp || 0)
+  const dead = row.isActive === false || row.isActive === 0 || (row.supersededBy || 0) > 0
+  const box = el('div', 'mem')
+  box.appendChild(el('div', 'sum', '#' + id + ' ' + (row.summary || '(无摘要)')))
+  box.appendChild(el('div', 'meta',
+    (row.layer ? '层 ' + row.layer + ' · ' : '')
+    + '记于' + fmtClock(learned)
+    + ((row.occurredAt || 0) > 0 ? ' · 事发' + new Date(row.occurredAt * 1000).toLocaleDateString('zh-CN') : '')
+    + ' · I=' + (row.intrinsicValue || 0) + ' · 情绪=' + (row.emotionScore || 0)
+    + ((row.supersededBy || 0) > 0 ? ' · 被取代→#' + row.supersededBy : '')))
+  if (dead) box.appendChild(el('div', 'meta dead', '已被取代 —— 这是她旧版本的说法,让位给了后来那条'))
+  return box
+}
+
+// 面板整体重建(小面板,重建比做 diff 便宜,也不会残留上一条的状态)。
+function renderEvidence () {
+  const box = $('evidence')
+  while (box.firstChild) box.removeChild(box.firstChild)
+  if (!evidenceTarget) return
+  let title = ''
+  let meta = ''
+  if (evidenceTarget.kind === 'bundle') {
+    const list = bundleEdges.get(evidenceTarget.id) || []
+    if (!list.length) { hideEvidence(); return }
+    const first = list[0]
+    const rels = []
+    for (const e of list) if (rels.indexOf(e.relation) < 0) rels.push(e.relation)
+    title = '关系依据 · ' + nameOf(first.source) + ' —' + rels.join('/') + '→ ' + nameOf(first.target)
+      + (list.length > 1 ? '(' + list.length + ' 条关系)' : '')
+    meta = list.map((e) => e.relation + ' 权重' + (e.weight || 1)
+      + ' · 激活度(现算)' + (e.activation || 0).toFixed(1) + stateLabel(e.activation || 0)
+      + (e.isActive === false ? '(已被取代→#' + (e.supersededBy || '?') + ')' : '')).join('  |  ')
+      + ' · 库里物化 ' + list.map((e) => e.activationStored || 0).join('/') + '(旧快照,DSH 不更新)'
+  } else if (evidenceTarget.kind === 'edge') {
+    const e = edgeById(evidenceTarget.id)
+    if (!e) { hideEvidence(); return }
+    title = '关系依据 · ' + nameOf(e.source) + ' —' + e.relation + '→ ' + nameOf(e.target)
+    meta = '权重' + (e.weight || 1) + ' · 激活度(现算)' + (e.activation || 0).toFixed(1) + stateLabel(e.activation || 0)
+      // 活库实测:节点物化列全 0,边留的是导入时的旧快照 —— 别把边说成「恒 0」
+      + ' · 库里物化' + (e.activationStored || 0) + '(旧快照,DSH 不更新) · ' + (TEMPORAL_LABELS[e.temporalStatus || 'time_unknown'] || '时间未知')
+      + (e.isActive === false ? ' · 已被取代→#' + (e.supersededBy || '?') : '')
+  } else {
+    const n = nodeById(evidenceTarget.id)
+    if (!n) { hideEvidence(); return }
+    title = '实体依据 · ' + n.name + '(' + (TYPE_LABELS[n.type] || n.type) + ')'
+    meta = '关联' + graphData.edges.filter((e) => e.source === n.id || e.target === n.id).length + ' 条关系'
+      + ' · 激活度(现算)' + (n.activation || 0).toFixed(1) + stateLabel(n.activation || 0)
+      + ' · 库里物化' + (n.activationStored || 0) + '(恒 0 —— DSH 从不写这列)'
+  }
+  const head = el('div', 'ev-head')
+  head.appendChild(el('h3', null, title))
+  const close = el('button', 'ev-close', '✕ 关闭')
+  close.onclick = hideEvidence
+  head.appendChild(close)
+  box.appendChild(head)
+  box.appendChild(el('div', 'ev-meta', meta))
+
+  const ids = selectionEvidenceIds()
+  box.appendChild(el('div', 'ev-note', ids.length > 0
+    ? '依据 ' + ids.length + ' 条:这段是从下面这些话里学来的,点编号看原话。'
+    : (evidenceTarget.kind === 'node'
+      ? '这条还不能追到原话(旧数据)—— 关联边都没落下记忆编号。'
+      : '这条关系还没记下依据 —— 旧数据写入时没落记忆编号,追不回原话。')))
+  if (ids.length > 0) {
+    const chips = el('div', 'ev-chips')
+    for (const id of ids) {
+      const c = memCache.get(id)
+      const chip = el('button', 'chip' + (c && c.state !== 'error' && c.state !== 'empty' ? ' chip-on' : ''),
+        '#' + id + (c && c.state === 'loading' ? ' …' : ''))
+      chip.onclick = () => loadMemory(id)
+      chips.appendChild(chip)
+    }
+    box.appendChild(chips)
+  }
+  for (const id of ids) {
+    const c = memCache.get(id)
+    if (c) box.appendChild(memoryCard(id, c))
+  }
+  box.classList.add('show')
+}
+
+function tipRow (k, v, color) {
+  const r = el('div', 'row')
+  r.appendChild(el('span', null, k))
+  r.appendChild(el('span', 'val', v, color ? { color } : null))
+  return r
+}
+function fillTip (evt, title, rows) {
+  const tip = $('tooltip')
+  while (tip.firstChild) tip.removeChild(tip.firstChild)
+  tip.appendChild(el('h3', null, title))
+  for (const r of rows) tip.appendChild(r)
+  tip.classList.add('show')
+  positionTip(evt)
+}
+
+async function loadData () {
+  try {
+    const r = await fetch(API)
+    const nd = await r.json()
+    if (!nd || nd.offline === true) return false
+    if (dataChanged(nd)) {
+      // 只有**这次新出现的**节点才做入场动画("记忆长出来"的样子)。
+      // 首帧时 seenIds 是空的 ⇒ 整张图依次弹出;之后每 10s 轮询重画不会再闪。
+      pendingEnter = new Set(nd.nodes.filter((n) => !seenIds.has(n.id)).map((n) => n.id))
+      for (const n of nd.nodes) seenIds.add(n.id)
+      graphData = nd
+      return true
+    }
+    return false
+  } catch (e) { return false }
+}
+function dataChanged (nd) {
+  if (!graphData.nodes.length) return true
+  if (nd.nodes.length !== graphData.nodes.length || nd.edges.length !== graphData.edges.length) return true
+  // v0.16.0 M1:依据条数也算「变了」—— 后端回填 evidenceIds 时,
+  // 激活度可能一个都没动,只比激活度会让页面一直显示旧的「追不回原话」。
+  const key = (edges) => edges.map((e) => e.id + ':' + (e.activation || 0).toFixed(1) + ':' + ((e.evidenceIds || []).length)).join(',')
+  // 幽灵层的条数也算「变了」:证据层是活的(她每写一条记忆就可能多一条),
+  // 不把它算进来,开着"联想"这一层时页面会一直画旧的那张。
+  const ghostKey = (l) => ((l && l.shadow && l.shadow.rows ? l.shadow.rows.length : 0) +
+    '/' + (l && l.evidence && l.evidence.rows ? l.evidence.rows.length : 0))
+  return key(graphData.edges) !== key(nd.edges) || ghostKey(graphData.layers) !== ghostKey(nd.layers)
+}
+
+// ---- 工具栏 ----
+/** 类型过滤:去掉按钮里的 emoji 汤,换成一个类型色小点 + 名字(审查台 2.0 同一套观感)。 */
+function buildTypeButtons () {
+  const known = ['person', 'habit', 'preference', 'event', 'concept']
+  const present = [...new Set(graphData.nodes.map((n) => n.type))]
+  const types = [...new Set([...known, ...present])]
+  if (activeTypes === null) activeTypes = new Set(types)
+  const box = $('type-btns')
+  while (box.firstChild) box.removeChild(box.firstChild)
+  for (const t of types) {
+    const b = el('button', 'filter-btn' + (activeTypes.has(t) ? ' active' : ''))
+    b.appendChild(el('span', 'dot', '', {
+      display: 'inline-block', width: '8px', height: '8px', borderRadius: '50%',
+      background: TYPE_COLORS[t] || TYPE_COLORS.concept, marginRight: '6px', verticalAlign: '1px'
+    }))
+    b.appendChild(document.createTextNode(TYPE_LABELS[t] || t))
+    b.onclick = () => {
+      if (activeTypes.has(t)) { if (activeTypes.size > 1) activeTypes.delete(t) } else activeTypes.add(t)
+      b.classList.toggle('active', activeTypes.has(t))
+      render()
+    }
+    box.appendChild(b)
+  }
+}
+/** 标签策略按钮:自动 → 全开 → 关。 */
+function cycleLabels () {
+  labelMode = (labelMode + 1) % LABEL_MODES.length
+  const b = $('label-btn')
+  if (b) b.textContent = '标签:' + LABEL_MODES[labelMode]
+  applyLabels()
+}
+function onSearch (v) { searchTerm = v.trim(); render() }
+function onWeightFilter (v) { weightMin = v; $('weight-val').textContent = String(v); render() }
+/** 幽灵层的 DOM id 后缀(史 / 联想两套控件)。 */
+const GHOST_DOM = { shadow: 'shadow', evidence: 'evi' }
+/** 引擎到底给没给这两层?(没重挂载的旧插件进程不给 —— 那次我让他点了没反应,是我的错:
+ *  控件必须当场说实话,不许装成"能开"。) */
+function ghostLayersReady () {
+  const L = graphData.layers
+  return !!(L && (L.shadow || L.evidence))
+}
+/** 开关一下(史 / 联想)。**只影响显示** —— 不写库、不改检索、不动事实图。 */
+function cycleGhost (which) {
+  const g = ghost[which]
+  if (!g) return
+  if (!ghostLayersReady()) { render(); return }   // 没数据:不装成"打开了"
+  g.on = !g.on
+  const b = $('ghost-' + GHOST_DOM[which] + '-btn')
+  if (b) {
+    b.classList.toggle('active', g.on)
+    b.textContent = GHOST_LABELS[which] + ':' + (g.on ? '开' : '关')
+  }
+  render()
+}
+function onGhostMin (which, v) {
+  if (!ghost[which]) return
+  ghost[which].min = v
+  const el2 = $('ghost-' + GHOST_DOM[which] + '-val')
+  if (el2) el2.textContent = String(v)
+  render()
+}
+/** 幽灵线的原生提示(鼠标停在线上才有,画布别的地方不受影响)。 */
+function ghostTitle (d) {
+  const two = nameOf(d.source.id) + ' ↔ ' + nameOf(d.target.id)
+  if (d.kind === 'shadow') {
+    return '史 · 影子边 w=' + d.weight + ' · ' + two + ' · ' + (d.relation || '共现') +
+      (d.scope ? '(' + d.scope + ')' : '') + ' —— 3a 的历史,已冻结;不是他亲口说的事实,不进检索'
+  }
+  return '联想 · 被 ' + (d.support || 1) + ' 条证据支持 · ' + two +
+    ' —— 共现证据层(中间层):同一轮/同一天一起出现过;不进检索'
+}
+function resetView () {
+  searchTerm = ''; $('search').value = ''
+  weightMin = 0; $('weight-slider').value = '0'; $('weight-val').textContent = '0'
+  // 幽灵层也复位(默认关、阈值 1)——「重置」该把页面还原成刚打开的样子
+  ghost = { shadow: { on: false, min: 1 }, evidence: { on: false, min: 1 } }
+  for (const which of ['shadow', 'evidence']) {
+    const b = $('ghost-' + GHOST_DOM[which] + '-btn')
+    if (b) { b.classList.remove('active'); b.textContent = GHOST_LABELS[which] + ':关' }
+    const sl = $('ghost-' + GHOST_DOM[which] + '-min')
+    if (sl) sl.value = '1'
+    const vv = $('ghost-' + GHOST_DOM[which] + '-val')
+    if (vv) vv.textContent = '1'
+  }
+  activeTypes = null
+  currentZoom = null
+  nodePositions = {}
+  buildTypeButtons()
+  render()
+}
+
+// ---- 渲染 ----
+function render () {
+  const svg = d3.select('#canvas')
+  svg.selectAll('.graph-layer').remove()
+
+  let nodes = graphData.nodes.filter((n) => activeTypes.has(n.type))
+  const idSet = new Set(nodes.map((n) => n.id))
+  let edges = graphData.edges.filter((e) => idSet.has(e.source) && idSet.has(e.target) && e.weight >= weightMin)
+
+  if (searchTerm) {
+    const match = new Set(nodes.filter((n) => n.name.toLowerCase().includes(searchTerm.toLowerCase())).map((n) => n.id))
+    for (const e of edges) {
+      if (match.has(e.source) || match.has(e.target)) { match.add(e.source); match.add(e.target) }
+    }
+    nodes = nodes.filter((n) => match.has(n.id))
+    const ids = new Set(nodes.map((n) => n.id))
+    edges = edges.filter((e) => ids.has(e.source) && ids.has(e.target))
+  }
+
+  if (!nodes.length) {
+    $('empty-msg').style.display = 'block'
+    // 只清图层:defs(箭头/微光/点阵底纹)必须留着 —— 旧版这里是
+    // svg.selectAll('*').remove(),一旦出现过"空图"再回来,箭头和底纹就全没了
+    svg.selectAll('.graph-layer').remove()
+    currentLinks = []
+    $('sn').textContent = '0'; $('se').textContent = '0'; $('sl').textContent = '0'; $('sa').textContent = '0'; $('sd').textContent = '0'; $('sr').textContent = '0'
+    $('ss').textContent = '0'; $('sg').textContent = '0'
+    return
+  }
+  $('empty-msg').style.display = 'none'
+
+  const aEdges = edges.filter((e) => (e.activation || 0) >= 50)
+  const dEdges = edges.filter((e) => (e.activation || 0) >= 10 && (e.activation || 0) < 50)
+  const rEdges = edges.filter((e) => (e.activation || 0) < 10)
+  $('sn').textContent = nodes.length; $('se').textContent = edges.length
+  $('sa').textContent = aEdges.length; $('sd').textContent = dEdges.length; $('sr').textContent = rEdges.length
+
+  const W = window.innerWidth, H = window.innerHeight
+  const g = svg.append('g').attr('class', 'graph-layer')
+  const T = GRAPH_TUNING
+
+  // ▼ 幽灵层(2026-10-02):**只给人看**的两层,建在最底下(事实线/节点都盖在它上面)。
+  //   端点必须都在**当前可见的**节点里 —— 否则线会悬空(类型筛选/搜索之后尤其明显)。
+  //   它们不进力导向、不进 currentLinks、不算进"关系/连线"两个计数。
+  const visIds = new Set(nodes.map((n) => n.id))
+  currentGhosts = ghostSelect(graphData.layers, visIds, ghost)
+  const ghostG = g.append('g').attr('class', 'ghost-layer')
+  const ghostLinks = []
+  for (const which of ['shadow', 'evidence']) {
+    for (const r of currentGhosts[which].rows) {
+      const s = nodeById(r.source); const tt = nodeById(r.target)
+      if (!s || !tt) continue
+      ghostLinks.push({ kind: which, key: which + ':' + r.id, source: s, target: tt,
+                        weight: r.weight, support: r.support, relation: r.relation, scope: r.scope })
+    }
+  }
+  ghostG.selectAll('path').data(ghostLinks).enter().append('path')
+    .attr('class', (d) => 'ghost-link ' + d.kind)
+    .append('title').text((d) => ghostTitle(d))
+  /** 统计栏上那两个幽灵层读数:画了 N / 共 M(略去 / 藏起都写在 title 里,说清为什么少)。 */
+  const ghostStat = (spanId, which, human) => {
+    const node = $(spanId)
+    if (!node) return
+    const ready = ghostLayersReady()
+    const b = $('ghost-' + GHOST_DOM[which] + '-btn')
+    if (b) {
+      b.classList.toggle('ghost-missing', !ready)
+      b.textContent = ready
+        ? (GHOST_LABELS[which] + ':' + (ghost[which].on ? '开' : '关'))
+        : (GHOST_LABELS[which] + ':—')
+    }
+    if (!ready) {
+      node.textContent = '—'
+      node.title = '幽灵层 · ' + human + ':引擎**还没给这一层** —— 要重挂载插件(重挂载后刷新本页)'
+      return
+    }
+    const total = (((graphData.layers || {})[which] || {}).rows || []).length
+    if (!ghost[which].on) {
+      node.textContent = '0'
+      node.title = '幽灵层 · ' + human + ':关着(点工具条那对按钮打开;**只看**,不进检索、不进力导向)'
+      return
+    }
+    const cur = currentGhosts[which]
+    node.textContent = cur.rows.length + '/' + total
+    node.title = '幽灵层 · ' + human + ':画 ' + cur.rows.length + ' / 共 ' + total +
+      (cur.dropped ? ' · 端点不在图上略去 ' + cur.dropped : '') +
+      (cur.hidden ? ' · 被阈值藏起 ' + cur.hidden : '') + ' —— **只看**:不进检索、不进力导向'
+  }
+  ghostStat('ss', 'shadow', '影子边(3a 史,已冻结)')
+  ghostStat('sg', 'evidence', '联想对(证据层,中间层)')
+
+  // ▼ 平行关系合并成一个"束"(2026-09-26 深夜,他第二次说丑之后查出来的):
+  //   活库里 用户—Echo 之间**有 6 条关系**,原先每条都画一根线、每条都是一根独立弹簧。
+  //   后果有两层:①6 条线完全重合,你**只看得见一条**,点也点不到另外 5 条;
+  //   ②每个束 = 6 根弹簧叠在同一个方向上,刚度 ×6 ⇒ 显式积分发散
+  //   (实测第 0 步速度就 2210px/步,十步之后节点被甩到 5e8 px 外 —— 页面会"炸图")。
+  //   现在:一束一根线(权重取束内最大),工具条/悬停里说清"6 条关系",点击展开全部依据。
+  const bundles = []
+  const bundleOf = new Map()
+  bundleEdges = new Map()
+  for (const e of edges) {
+    const key = e.source < e.target ? e.source + '\u0000' + e.target : e.target + '\u0000' + e.source
+    let b = bundleOf.get(key)
+    if (!b) {
+      b = { key, source: e.source, target: e.target, weight: 0, activation: 0, edges: [], relation: e.relation }
+      bundleOf.set(key, b)
+      bundles.push(b)
+    }
+    b.edges.push(e)
+    if ((e.weight || 1) > b.weight) { b.weight = e.weight || 1; b.relation = e.relation }
+    if ((e.activation || 0) > b.activation) b.activation = e.activation || 0
+  }
+  for (const b of bundles) bundleEdges.set(b.key, b.edges)
+  $('sl').textContent = bundles.length
+
+  // 度数表:**真邻居数**(不是边端点)——
+  // 活库里"用户"有 25 条边的端点,但真邻居只有 12 个(有一对多重复关系)。
+  // 用端点数会把枢纽的边长算成 300px,17 个节点被撑成一片空地,又空又丑。
+  const neighbor = new Map()
+  for (const b of bundles) {
+    if (!neighbor.has(b.source)) neighbor.set(b.source, new Set())
+    if (!neighbor.has(b.target)) neighbor.set(b.target, new Set())
+    neighbor.get(b.source).add(b.target)
+    neighbor.get(b.target).add(b.source)
+  }
+  const degree = new Map()
+  for (const [id, set] of neighbor) degree.set(id, set.size)
+  const degOf = (d) => degree.get(d.id) || 0
+
+  for (const n of nodes) {
+    if (nodePositions[n.id]) { n.x = nodePositions[n.id].x; n.y = nodePositions[n.id].y } else {
+      // 首帧撒在一个环带上,而不是圆心附近的 200px 方框:方框里起步,
+      // 弱斥力下容易一开始就叠成团(旧版是 Math.random()*200-100)
+      const ang = Math.random() * Math.PI * 2
+      const rad = Math.min(W, H) * (0.16 + Math.random() * 0.24)
+      n.x = W / 2 + Math.cos(ang) * rad
+      n.y = (H + 60) / 2 + Math.sin(ang) * rad
+    }
+    n.vx = 0; n.vy = 0
+  }
+  // 物理用"束":一对节点一根弹簧(平行关系不再把刚度叠起来)
+  const d3Links = bundles.map((b) => ({ ...b, id: b.key, relCount: b.edges.length }))
+  currentLinks = d3Links
+
+  const hasOld = Object.keys(nodePositions).length > 0
+  const iterations = hasOld ? 30 : (nodes.length > 200 ? 60 : 300)
+  const linkDeg = (l) => [degree.get(l.source.id) || 1, degree.get(l.target.id) || 1]
+
+  /* ---- 两条自定义力(夹角 / 边间斥力)----------------------------------------
+   * d3 没有"两条边别挤在一起"这种力,所以自己写(d3 的自定义力就是 { force(alpha) } +
+   * initialize 两个约定)。两条都遵守 d3 的规矩:只往 vx/vy 上加,不直接改 x/y;
+   * fx 已固定的节点(拖拽中 / 被他钉住)不动它 —— 于是"转一个点"时,被转的节点不跑,
+   * 它的邻居被推开,夹角自然就开了。
+   * 都和 alpha 成正比:布局收敛时它们一起安静下来(不会永远抖)。 */
+  const forceAngles = (() => {
+    const force = (alpha) => {
+      const incident = new Map()   // node.id -> [{self, other}]
+      for (const l of d3Links) {
+        const s = l.source; const t = l.target
+        if (!incident.has(s.id)) incident.set(s.id, [])
+        if (!incident.has(t.id)) incident.set(t.id, [])
+        incident.get(s.id).push({ self: s, other: t })
+        incident.get(t.id).push({ self: t, other: s })
+      }
+      for (const list of incident.values()) {
+        if (list.length < 2) continue
+        const items = list.map((it) => ({
+          self: it.self,
+          other: it.other,
+          ang: Math.atan2(it.other.y - it.self.y, it.other.x - it.self.x)
+        })).sort((a, b) => a.ang - b.ang)
+        const uniform = Math.PI * 2 / items.length
+        for (let i = 0; i < items.length; i += 1) {
+          const cur = items[i]
+          const nxt = items[(i + 1) % items.length]
+          let gap = nxt.ang - cur.ang
+          if (gap < 0) gap += Math.PI * 2
+          if (gap >= uniform || gap <= 1e-9) continue     // 够开;完全重合交给下一轮(避免除零)
+          const push = (uniform - gap) / uniform          // 0~1,越挤推得越狠
+          const omega = T.angleStrength * alpha * push     // 弧度/步
+          for (const [it, sign] of [[cur, -1], [nxt, 1]]) {
+            if (it.other.fx != null || it.other.fy != null) continue   // 钉住的点不推
+            const dx = it.other.x - it.self.x; const dy = it.other.y - it.self.y
+            const r = Math.hypot(dx, dy) || 1
+            // 切向速度 = 角速度 × 半径;sign 让两条边往相反方向转开
+            const v = omega * r
+            it.other.vx += (-dy / r) * v * sign
+            it.other.vy += (dx / r) * v * sign
+          }
+        }
+      }
+    }
+    force.initialize = () => {}
+    return force
+  })()
+
+  const forceEdgeRepel = (() => {
+    const force = (alpha) => {
+      const R = T.edgeRepelRadius
+      for (let i = 0; i < d3Links.length; i += 1) {
+        for (let j = i + 1; j < d3Links.length; j += 1) {
+          const A = d3Links[i]; const B = d3Links[j]
+          // 共端点的两条边是"夹角"问题,由上面那条力管;这里只管不相邻的
+          if (A.source === B.source || A.source === B.target || A.target === B.source || A.target === B.target) continue
+          const near = T.closestSegments(A.source, A.target, B.source, B.target)
+          if (near.d >= R || near.d <= 1e-9) continue
+          const f = T.edgeRepelStrength * alpha * (1 - near.d / R) * 0.5
+          const dx = near.dir.x * f; const dy = near.dir.y * f
+          for (const [e, sg] of [[A, -1], [B, 1]]) {
+            for (const p of [e.source, e.target]) {
+              if (p.fx != null || p.fy != null) continue
+              p.vx += dx * sg; p.vy += dy * sg
+            }
+          }
+        }
+      }
+    }
+    force.initialize = () => {}
+    return force
+  })()
+
+  simulation = d3.forceSimulation(nodes)
+    .force('link', d3.forceLink(d3Links).id((d) => d.id)
+      .distance((d) => T.linkDistance(d.weight, linkDeg(d)[0], linkDeg(d)[1], T.seedOf(d.key)))
+      .strength((d) => T.linkStrength(linkDeg(d)[0], linkDeg(d)[1])))
+    .force('charge', d3.forceManyBody().strength((d) => T.chargeOf(degOf(d))).distanceMax(T.chargeMax))
+    .force('x', d3.forceX(W / 2).strength(T.centerPull))
+    .force('y', d3.forceY((H + 60) / 2).strength(T.centerPull))
+    .force('collision', d3.forceCollide().radius((d) => T.collideOf(d.weight)).strength(0.95).iterations(2))
+    // 夹角(边与边在节点处不许挤成锐角)+ 边间斥力(不相邻的线也别贴着走)
+    .force('angles', forceAngles)
+    .force('edgeRepel', forceEdgeRepel)
+    .alphaDecay(1 - Math.pow(.001, 1 / iterations))
+    .velocityDecay(T.velocityDecay)
+    .stop()
+  // 预跑:每步之后给速度上界。显式欧拉积分在刚度大时会发散(实测旧写法第 0 步就
+  // 2210px/步,十步甩到 5e8 px) —— 速度和方向都还算对,只是步子太大;夹一下,
+  // 它就成了"最多走这么快",而不是"炸图"。
+  for (let i = 0; i < iterations; i++) {
+    simulation.tick()
+    for (const n of nodes) {
+      const v = Math.hypot(n.vx, n.vy)
+      if (v > T.maxStep) { const k = T.maxStep / v; n.vx *= k; n.vy *= k }
+    }
+  }
+  for (const n of nodes) nodePositions[n.id] = { x: n.x, y: n.y }
+
+  const stateOf = (a) => (a >= 30 ? 'a' : a > 0 ? 'd' : 'r')
+  // 边粗细 = 权重:纯函数在表里(T.linkWidth),这里只把当前数据喂进去。
+  // 区间 1.2~4.8px —— 旧版到 8px,他截图里那八条 7px 实心绿线把整图变成了绿章鱼。
+  const linkWidth = (d) => T.linkWidth(d.weight, d.activation || 0)
+
+  // 边的颜色:三档状态色,但**低饱和 + 低透明度**(参考实现在亮底上用的是 0.3~0.55 的
+  // 灰棕线)。状态还可以靠虚线认:清醒实线、模糊长虚、遗忘短虚。
+  const edgeColor = (d) => {
+    const a = d.activation || 0
+    const p = EDGE_PALETTES[themeMode] || EDGE_PALETTES.paper
+    const soft = themeMode === 'paper'      // 亮底上要更实一点才看得见
+    const intensity = Math.min(1, (d.weight || 1) / 10)
+    const rgb = a >= 30 ? p.ok : (a > 0 ? p.warn : p.bad)
+    const alpha = a >= 30 ? (soft ? 0.5 : 0.4) + intensity * (soft ? 0.3 : 0.35)
+      : a > 0 ? (soft ? 0.45 : 0.35) + intensity * (soft ? 0.25 : 0.3)
+        : (soft ? 0.42 : 0.3) + intensity * 0.2
+    return 'rgba(' + rgb[0] + ',' + rgb[1] + ',' + rgb[2] + ',' + Math.min(0.92, alpha).toFixed(2) + ')'
+  }
+  const edgeStroke = (d) => {
+    const p = EDGE_PALETTES[themeMode] || EDGE_PALETTES.paper
+    const a = d.activation || 0
+    const rgb = a >= 30 ? p.ok : (a > 0 ? p.warn : p.bad)
+    return 'rgb(' + rgb[0] + ',' + rgb[1] + ',' + rgb[2] + ')'
+  }
+  // 弧线:**圆心到圆心**(端点精确落在圆心上),由节点那圈背景色光环把线切断 ——
+  // 这样线看着是从节点底下穿过去的,不是"撞"在圆上的断口。
+  const link = g.selectAll('.link').data(d3Links).enter().append('path').attr('class', 'link')
+    .attr('stroke-width', linkWidth)
+    .attr('stroke', edgeColor)
+    // 状态靠虚线区分(参考实现就是用 5,4 / 8,3 区分关系类型的):
+    // 清醒实线 → 模糊 6,5 → 遗忘 2.5,3.5
+    .attr('stroke-dasharray', (d) => {
+      const a = d.activation || 0
+      if (a >= 30) return null
+      return a > 0 ? '6,5' : '2.5,3.5'
+    })
+
+  // 流动层:同一条弧上再叠一条"跑动的虚线",方向 source→target,速度由权重定
+  // (`--dur`)。这就是方向指示 —— 比贴一枚静止的箭头自然,也解释了"动起来"要他说的那种活感。
+  const linkFlow = g.selectAll('.link-flow').data(d3Links).enter().append('path')
+    .attr('class', 'link-flow')
+    .attr('stroke', edgeStroke)
+    .style('--dur', (d) => T.flowDuration(d.weight) + 's')
+  // 流向标(取代原来"贴在圆末端的实心三角"):挂在线中段的一枚小细拐,
+  // 顺着弧的切线转。参考实现一枚箭头都不画;他要求保留方向,所以留成"极淡的一枚",
+  // 悬停时才亮 —— 平时不参与构图。只给权重 ≥3 的边,免得成刺猬。
+  const linkArrow = g.selectAll('.link-arrow')
+    .data(d3Links.filter((d) => (d.weight || 1) >= 3)).enter().append('path')
+    .attr('class', 'link-arrow')
+    .attr('d', 'M-3,-2.3 L2.2,0 L-3,2.3')
+    .attr('stroke', edgeStroke)
+
+  const linkLabel = g.selectAll('.link-label').data(d3Links).enter().append('text').attr('class', 'link-label')
+    .style('opacity', 0)
+    .text((d) => d.relation + (d.relCount > 1 ? ' ×' + d.relCount : ''))
+
+  // v0.16.0 M1 命中层:细线点不中,铺一层透明粗线专接点击(零依赖的常规做法)。
+  // 压在关系名之上、圆之下 —— 名字不吃事件,圆仍然优先。
+  // v0.27.0:命中单元改成"束" —— 平行关系合并后,点一下展开的是这一串关系的全部依据。
+  const linkHit = g.selectAll('.link-hit').data(d3Links).enter().append('path').attr('class', 'link-hit')
+  linkHit.append('title').text((d) => {
+    const ev = (bundleEdges.get(d.key) || []).reduce((n, e) => n + ((e.evidenceIds || []).length), 0)
+    const head = d.relation + (d.relCount > 1 ? ' ×' + d.relCount + ' 条平行关系' : '')
+    return head + ' · 权重' + (d.weight || 1) + ' · 依据' + ev + ' 条(点这条线展开原话)'
+  })
+  linkHit.on('click', (evt, d) => { evt.stopPropagation(); showEvidence('bundle', d.key) })
+
+  const nodeG = g.selectAll('.node-g').data(nodes).enter().append('g').attr('class', 'node-g')
+    .call(d3.drag().on('start', dragStart).on('drag', dragging).on('end', dragEnd))
+
+  nodeG.filter((d) => d.isProtected).append('circle').attr('class', 'node-glow')
+    .attr('r', (d) => T.radiusOf(d.weight) + 4)
+  // 动效③:核心锚定的节点有一圈淡淡的呼吸环(别的节点安静)
+  nodeG.filter((d) => d.isProtected).append('circle').attr('class', 'node-pulse')
+    .attr('r', (d) => T.radiusOf(d.weight) + 6)
+    .style('--breathe', (d) => (4 + (String(d.id).length % 4) * 0.7).toFixed(1) + 's')
+
+  // 背景色光环:线的端点其实在圆心上,靠这一圈把线"切断" ——
+  // 于是线看着是从节点底下穿过去的(连续感),而不是撞在圆上的硬断口(零件感)。
+  nodeG.append('circle').attr('class', 'node-halo')
+    .attr('r', (d) => T.radiusOf(d.weight) + 2.5)
+
+  /* 节点:**靠形状/描边分类型**,不再全是同一个实心圆(参考实现分四类:实心、空心虚线、
+     半透明、大环)。这是"设计过"和"拼积木"的分界线 —— 五类各有一套画法:
+       · 人物    实心 + 本色描边(锚点,最重)
+       · 习惯    空心(只描边)
+       · 偏好    淡底 + 虚线描边
+       · 事件    淡底 + 实线描边(比习惯粗一点)
+       · 概念    半透明实心,没有描边(退到最后面去)  */
+  const shapeOf = (d) => {
+    const t = d.type || 'concept'
+    const c = TYPE_COLORS[t] || TYPE_COLORS.concept
+    if (t === 'person') return { fill: c, fillOpacity: .92, stroke: d3.color(c).darker(.35) + '', width: 1.4, dash: null }
+    if (t === 'habit') return { fill: 'none', fillOpacity: 0, stroke: c, width: 1.5, dash: null }
+    if (t === 'preference') return { fill: c, fillOpacity: .14, stroke: c, width: 1.3, dash: '3,2' }
+    if (t === 'event') return { fill: c, fillOpacity: .16, stroke: c, width: 1.7, dash: null }
+    return { fill: c, fillOpacity: .55, stroke: 'none', width: 0, dash: null }
+  }
+  nodeG.append('circle').attr('class', 'node')
+    .attr('r', (d) => T.radiusOf(d.weight))
+    .attr('fill', (d) => shapeOf(d).fill)
+    .attr('fill-opacity', (d) => shapeOf(d).fillOpacity)
+    .attr('stroke', (d) => shapeOf(d).stroke)
+    .attr('stroke-width', (d) => shapeOf(d).width)
+    .attr('stroke-dasharray', (d) => shapeOf(d).dash)
+
+  nodeG.append('text').attr('class', 'node-label')
+    .text((d) => d.name)
+    .attr('y', (d) => T.radiusOf(d.weight) + 12)
+
+  // 动效②:只有**这次新出现的**节点做入场(首帧整张图依次弹出;每 10s 轮询重画不会闪)。
+  // 动画挂在圆和文字上,不挂在 <g> 上 —— <g> 的 transform 是布局用的 translate(x,y),
+  // CSS 动画的 transform 会把它整个盖掉,节点会瞬移到原点。圆的 transform 是空的,
+  // 加上 transform-box:fill-box 就以自己的圆心缩放。
+  const freshIdx = new Map()
+  nodes.forEach((d) => { if (pendingEnter.has(d.id)) freshIdx.set(d.id, freshIdx.size) })
+  if (freshIdx.size) {
+    nodeG.selectAll('.node-halo, .node, .node-label')
+      .filter((d) => freshIdx.has(d.id))
+      .classed('enter', true)
+      .style('animation-delay', (d) => T.enterDelay(freshIdx.get(d.id)) + 'ms')
+  }
+  pendingEnter = new Set()
+
+  // v0.16.0 M1:点节点看「这个实体是从哪些话里学来的」(关联边依据的并集)。
+  // d3.drag 在真的拖动过之后会吞掉 click,所以拖拽定点与点击展开不打架。
+  nodeG.on('mouseenter', onNodeEnter).on('mouseleave', onNodeLeave)
+    .on('click', (evt, d) => { evt.stopPropagation(); showEvidence('node', d.id) })
+  link.on('mouseenter', onLinkEnter).on('mouseleave', onLinkLeave)
+
+  const zoomK = () => (currentZoom ? currentZoom.k : 1)
+  /** 标签显示策略:自动(权重 ≥6 常显,≥3 且放大后显)/ 全开 / 关。
+   *  以前 17 个名字全挂着,叠在边和圆上,是"丑"的一半来源。
+   *  判据本身是纯函数(T.labelFor),这里只负责把画布上的东西按它更新。 */
+  labelVisible = (d) => T.labelFor(d.weight, labelMode, zoomK())
+  applyLabels = () => {
+    g.selectAll('.node-label')
+      .style('display', (d) => (labelVisible(d) ? null : 'none'))
+      // 字号/字重分级:枢纽的名字大一号、加粗 —— 全是同一个大小就是"拼凑"的观感来源之一。
+      .style('font-size', (d) => ((d.weight || 1) >= 6 ? '13px' : (d.weight || 1) >= 3 ? '11.5px' : '10.5px'))
+      .style('font-weight', (d) => ((d.weight || 1) >= 6 ? 700 : 500))
+      .style('opacity', (d) => ((d.weight || 1) >= 6 ? 1 : (d.weight || 1) >= 3 ? .78 : .62))
+      .classed('node-labelfaint', (d) => (d.weight || 1) < T.labelAlways)
+  }
+
+  const applyPositions = () => {
+    // v0.27.0 之后改了三版,现在是:弧线画**圆心到圆心**,节点那圈背景色光环
+    // 负责把线切断(线从节点底下穿过,而不是撞在圆上)。
+    // 流向标挂在线中段 t=.62 处、顺着切线转 —— 不再是贴在圆末端的三角。
+    const kOf = (d) => T.curveOf(d.key)
+    const pathOf = (d) => T.arcPath(d.source, d.target, kOf(d))
+    link.attr('d', pathOf)
+    linkFlow.attr('d', pathOf)
+    linkHit.attr('d', pathOf)
+    linkLabel
+      .attr('x', (d) => T.arcPoint(d.source, d.target, kOf(d), .36).x)
+      .attr('y', (d) => T.arcPoint(d.source, d.target, kOf(d), .36).y - 6)
+    linkArrow.attr('transform', (d) => {
+      const p = T.arcPoint(d.source, d.target, kOf(d), .62)
+      return 'translate(' + p.x + ',' + p.y + ') rotate(' + T.arcAngle(d.source, d.target, kOf(d), .62).toFixed(1) + ')'
+    })
+    nodeG.attr('transform', (d) => 'translate(' + d.x + ',' + d.y + ')')
+    // 幽灵层跟着布局走(和事实线同一套弧线算法,只是不参与受力):不更新它们会停在原地
+    ghostG.selectAll('.ghost-link').attr('d', (d) => T.arcPath(d.source, d.target, T.curveOf(d.key)))
+  }
+  simulation.on('tick', applyPositions)
+  // 预跑之后必须自己画一次:旧版靠 `simulation.alpha(.3).restart()` 让它"自己抖到位",
+  // 那就是"受力有问题"的观感来源 —— 布局定下来就不再动,拖拽时才重新给 alpha。
+  applyPositions()
+
+  const zoom = d3.zoom().scaleExtent([.2, 5]).on('zoom', (e) => {
+    g.attr('transform', e.transform)
+    currentZoom = e.transform
+    applyLabels()   // 放大到 1.2 倍以上才放出中等权重节点的名字
+  })
+  svg.call(zoom)
+  if (currentZoom) g.attr('transform', currentZoom)
+  svg.on('dblclick.zoom', null)
+  applyLabels()
+}
+
+function dragStart (e, d) { if (!e.active) simulation.alphaTarget(.3).restart(); d.fx = d.x; d.fy = d.y }
+function dragging (e, d) { d.fx = e.x; d.fy = e.y }
+function dragEnd (e, d) { if (!e.active) simulation.alphaTarget(0); d.fx = null; d.fy = null }
+
+// ---- 悬停聚焦 + tooltip(DOM 构建,不拼 innerHTML)----
+/** 悬停时把「她 + 一环邻居」整片点亮,其余压暗。旧版只按 id 相等判,
+ *  结果连邻居都暗下去 —— 看一个枢纽时反而看不到它连了谁。 */
+function neighborhood (d) {
+  const near = new Set([d.id])
+  for (const l of currentLinks) {
+    if (l.source.id === d.id) near.add(l.target.id)
+    else if (l.target.id === d.id) near.add(l.source.id)
+  }
+  return near
+}
+function onNodeEnter (evt, d) {
+  const svg = d3.select('#canvas')
+  const near = neighborhood(d)
+  svg.selectAll('.node-g').transition().duration(160).style('opacity', (n) => near.has(n.id) ? 1 : .12)
+  svg.selectAll('.link').transition().duration(160).style('opacity', (l) => (l.source.id === d.id || l.target.id === d.id) ? 1 : .06)
+  svg.selectAll('.link-label').transition().duration(160).style('opacity', (l) => (l.source.id === d.id || l.target.id === d.id) ? 1 : 0)
+  svg.selectAll('.link-arrow').transition().duration(160).style('opacity', (l) => (l.source.id === d.id || l.target.id === d.id) ? 1 : .05)
+  // 邻居的名字全放出来(自动模式平时只显示高权重那几个)
+  svg.selectAll('.node-label').style('display', (n) => (near.has(n.id) ? null : 'none'))
+  d3.select(evt.currentTarget).select('.node').transition().duration(160).attr('r', GRAPH_TUNING.radiusOf(d.weight) * 1.45)
+
+  const tip = $('tooltip')
+  while (tip.firstChild) tip.removeChild(tip.firstChild)
+  tip.appendChild(el('h3', null, d.name))
+  const row = tipRow
+  tip.appendChild(row('类型', TYPE_LABELS[d.type] || d.type, TYPE_COLORS[d.type] || '#94A3B8'))
+  tip.appendChild(row('权重', d.weight || 1))
+  tip.appendChild(row('激活度', (d.activation || 0).toFixed(1) + '(' + stateLabel(d.activation || 0) + ')', stateColor(d.activation || 0)))
+  tip.appendChild(row('核心锚定', d.isProtected ? '✅ 是' : '否'))
+  const related = graphData.edges.filter((ed) => ed.source === d.id || ed.target === d.id)
+  tip.appendChild(row('关联边数', related.length))
+  // v0.16.0 M1:节点的依据 = 关联边 evidenceIds 并集。tooltip 是
+  // pointer-events:none 的,点不动 —— 这里只报数,点节点才在右侧面板展开。
+  tip.appendChild(row('依据', nodeEvidenceIds(d.id).length + ' 条 · 点击节点展开原话', '#38bdf8'))
+  if (related.length) {
+    const list = el('div', 'rel-list')
+    for (const ed of related.slice(0, 10)) {
+      const other = ed.source === d.id ? ed.target : ed.source
+      const otherNode = graphData.nodes.find((n) => n.id === other)
+      const item = el('div', 'rel-item')
+      item.appendChild(document.createTextNode((otherNode ? otherNode.name : other) + ' '))
+      item.appendChild(el('span', null, '—' + ed.relation + '—', { color: '#64748b' }))
+      item.appendChild(document.createTextNode(' '))
+      item.appendChild(el('span', null, stateLabel(ed.activation || 0) + '(' + (ed.activation || 0).toFixed(1) + ')', { color: stateColor(ed.activation || 0) }))
+      item.appendChild(el('span', null, ' 半衰期' + fmtHalfLife(ed.halfLife || 0) + '·想起' + (ed.recallCount || 0) + '次·价值' + (ed.intrinsicValue || 0).toFixed(0), { color: '#64748b' }))
+      const tlabel = TEMPORAL_LABELS[ed.temporalStatus || 'time_unknown'] || '时间未知'
+      const occ = ed.occurredAt ? new Date(ed.occurredAt * 1000).toLocaleDateString('zh-CN') : ''
+      item.appendChild(el('span', null, ' [' + tlabel + (occ ? ' ' + occ : '') + ']', { color: '#64748b' }))
+      if (ed.layer === 'L0') item.appendChild(el('span', null, ' [核心]', { color: '#a78bfa' }))
+      if (ed.isActive === false) item.appendChild(el('span', null, ' [已被取代→#' + (ed.supersededBy || '?') + ']', { color: '#ef4444' }))
+      list.appendChild(item)
+    }
+    tip.appendChild(list)
+  }
+  tip.classList.add('show')
+  positionTip(evt)
+}
+function onNodeLeave () {
+  const svg = d3.select('#canvas')
+  svg.selectAll('.node-g').transition().duration(160).style('opacity', 1)
+  svg.selectAll('.link').transition().duration(160).style('opacity', 1)
+  svg.selectAll('.link-label').transition().duration(160).style('opacity', 0)
+  svg.selectAll('.link-arrow').transition().duration(160).style('opacity', .5)
+  applyLabels()   // 收回悬停时放出的邻居名字,回到当前标签策略
+  $('tooltip').classList.remove('show')
+}
+// v0.16.0 M1:边也有了 tooltip —— 原先只有悬停聚焦,关系的权重/时间/依据
+// 全看不见,「依据」更是无从点起。tooltip 报数与提示,点击(命中层)展开面板。
+function onLinkEnter (evt, d) {
+  const svg = d3.select('#canvas')
+  svg.selectAll('.link').transition().duration(200).style('opacity', (l) => l === d ? 1 : .15)
+  svg.selectAll('.link-label').transition().duration(200).style('opacity', (l) => l === d ? 1 : 0)
+  svg.selectAll('.link-arrow').transition().duration(200).style('opacity', (l) => l === d ? 1 : .12)
+  const rows = [
+    tipRow('权重', d.weight || 1),
+    tipRow('激活度', (d.activation || 0).toFixed(1) + '(' + stateLabel(d.activation || 0) + ')', stateColor(d.activation || 0)),
+    tipRow('时间状态', TEMPORAL_LABELS[d.temporalStatus || 'time_unknown'] || '时间未知'),
+    tipRow('依据', ((d.evidenceIds || []).length) + ' 条 · 点击这条线展开原话', '#38bdf8')
+  ]
+  if (d.isActive === false) rows.push(tipRow('状态', '已被取代→#' + (d.supersededBy || '?'), '#ef4444'))
+  fillTip(evt, nameOf(d.source) + ' —' + d.relation + '→ ' + nameOf(d.target), rows)
+}
+function onLinkLeave () {
+  d3.select('#canvas').selectAll('.link').transition().duration(200).style('opacity', 1)
+  d3.select('#canvas').selectAll('.link-arrow').transition().duration(200).style('opacity', .5)
+  // 边 tooltip 是本次新加的,离开时必须自己收掉 —— 否则它跟着鼠标赖在屏幕上
+  $('tooltip').classList.remove('show')
+}
+function positionTip (evt) {
+  const tip = $('tooltip')
+  const pad = 14
+  let x = evt.clientX + pad, y = evt.clientY + pad
+  const r = tip.getBoundingClientRect()
+  if (x + r.width > window.innerWidth - 8) x = evt.clientX - r.width - pad
+  if (y + r.height > window.innerHeight - 8) y = evt.clientY - r.height - pad
+  tip.style.left = x + 'px'; tip.style.top = y + 'px'
+}
+
+// ---- 实时:SSE 审计推送 + 10s 轮询兜底(原版 WS + 5s 兜底)----
+async function poll () {
+  await loadDisplayTuning()          // P3-c:面板改的显示调参,这一屏就生效(读不到 ⇒ 出厂值)
+  if (!(await loadData())) return
+  buildTypeButtons()
+  render()
+  // v0.16.0 M5:图谱换代后依据可能已经变了 —— 只在数据真变了时才重画面板
+  // (无谓重画会把正在读原话的人的滚动位置冲掉)。
+  if (evidenceTarget) renderEvidence()
+}
+function connectEvents () {
+  try {
+    const es = new EventSource('/api/echo/events')
+    es.addEventListener('audit', () => { $('live').textContent = '实时'; $('live').style.color = '#22c55e'; poll() })
+    es.onopen = () => { $('live').textContent = '实时'; $('live').style.color = '#22c55e' }
+    es.onerror = () => { $('live').textContent = '轮询中'; $('live').style.color = '#f59e0b' }
+  } catch (e) { $('live').textContent = '轮询中'; $('live').style.color = '#f59e0b' }
+}
+
+async function boot () {
+  applyTheme()
+  applyMotion()
+  await poll()
+  buildTypeButtons()
+  render()
+  connectEvents()
+  setInterval(poll, 10000)
+  // 窗口大小变了就重排一次(旧版没有这个:窗口一变大,图还是按旧尺寸排的,
+  // 看着就是"歪的";缩小则可能把点挤到屏幕外)。预跑只走 30 步,位置接着用。
+  let rt = null
+  window.addEventListener('resize', () => {
+    clearTimeout(rt)
+    rt = setTimeout(() => render(), 220)
+  })
+}
+boot()
+</script>
+</body>
+</html>

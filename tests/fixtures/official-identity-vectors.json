@@ -1,0 +1,188 @@
+{
+  "identityVectors": [
+    {
+      "id": "missing",
+      "input": {
+        "appId": "synth-app-A",
+        "rawOpenid": "SYNTHETIC_OWNER_OPENID_A",
+        "rawMsgId": "synthetic-message-A",
+        "indexKind": "missing",
+        "indexValue": ""
+      },
+      "expected": {
+        "ownerHash": "oh2_5a9e7e7a7c2edea2b3eeefdc58e2c5eee19d34b2ce16e4fd2902113620e5ba9d",
+        "chatId": "official:c2c:v2:5a9e7e7a7c2edea2b3eeefdc58e2c5eee19d34b2ce16e4fd2902113620e5ba9d",
+        "scopeKey": "sc2_5b460aa095fbc9b8d0a2eae72cfe3ea5b9cf5e25bfc5cc8fbded0ebed02f2f63",
+        "replyAnchorKey": "ra2_918fc68590d99341d5c794b8d82a2a9f76a96f3b52ee3e9f0b8752942726ec73",
+        "inboundKey": "in2_8d0a0e8f164861294b15096b4713adc133627fdceeb65d0c19e392771465b88c",
+        "v1": {
+          "namespace": "ac9f8c7a087994c4d286909b30e6d3467f7b01902633724f10b19a8ab15f428c",
+          "inboundKey": "9d5f087cf08e576012dad8359963a506c0bb9c67381de5900e3e46dd9efe5a6b",
+          "replyKey": "9d5f087cf08e576012dad8359963a506c0bb9c67381de5900e3e46dd9efe5a6b"
+        },
+        "ownerPreimageHex": "6563686f2e71712e63326300763200000000056f776e65720000000b73796e74682d6170702d41000000036332630000001853594e5448455449435f4f574e45525f4f50454e49445f41"
+      }
+    },
+    {
+      "id": "present-01",
+      "input": {
+        "appId": "synth-app-A",
+        "rawOpenid": "SYNTHETIC_OWNER_OPENID_A",
+        "rawMsgId": "synthetic-message-A",
+        "indexKind": "present",
+        "indexValue": "msg_idx=01"
+      },
+      "expected": {
+        "ownerHash": "oh2_5a9e7e7a7c2edea2b3eeefdc58e2c5eee19d34b2ce16e4fd2902113620e5ba9d",
+        "chatId": "official:c2c:v2:5a9e7e7a7c2edea2b3eeefdc58e2c5eee19d34b2ce16e4fd2902113620e5ba9d",
+        "scopeKey": "sc2_5b460aa095fbc9b8d0a2eae72cfe3ea5b9cf5e25bfc5cc8fbded0ebed02f2f63",
+        "replyAnchorKey": "ra2_918fc68590d99341d5c794b8d82a2a9f76a96f3b52ee3e9f0b8752942726ec73",
+        "inboundKey": "in2_2d43715679c6895d7aa26cee287e292d12ff214dc738887aa591a046c35cd234",
+        "v1": {
+          "namespace": "ac9f8c7a087994c4d286909b30e6d3467f7b01902633724f10b19a8ab15f428c",
+          "inboundKey": "5950fe8f083a01f236d992354ccc56f8e795529ebfac63311717eeb221b769cc",
+          "replyKey": "9d5f087cf08e576012dad8359963a506c0bb9c67381de5900e3e46dd9efe5a6b"
+        },
+        "ownerPreimageHex": "6563686f2e71712e63326300763200000000056f776e65720000000b73796e74682d6170702d41000000036332630000001853594e5448455449435f4f574e45525f4f50454e49445f41"
+      }
+    },
+    {
+      "id": "present-1",
+      "input": {
+        "appId": "synth-app-A",
+        "rawOpenid": "SYNTHETIC_OWNER_OPENID_A",
+        "rawMsgId": "synthetic-message-A",
+        "indexKind": "present",
+        "indexValue": "msg_idx=1"
+      },
+      "expected": {
+        "ownerHash": "oh2_5a9e7e7a7c2edea2b3eeefdc58e2c5eee19d34b2ce16e4fd2902113620e5ba9d",
+        "chatId": "official:c2c:v2:5a9e7e7a7c2edea2b3eeefdc58e2c5eee19d34b2ce16e4fd2902113620e5ba9d",
+        "scopeKey": "sc2_5b460aa095fbc9b8d0a2eae72cfe3ea5b9cf5e25bfc5cc8fbded0ebed02f2f63",
+        "replyAnchorKey": "ra2_918fc68590d99341d5c794b8d82a2a9f76a96f3b52ee3e9f0b8752942726ec73",
+        "inboundKey": "in2_daccb109db37568531d2a91501ef0778de16417d7be897f93f7d8ca21e01a85b",
+        "v1": {
+          "namespace": "ac9f8c7a087994c4d286909b30e6d3467f7b01902633724f10b19a8ab15f428c",
+          "inboundKey": "981a4a4c282d5bd24ec320bb2de232d94a4d590c2f0289dd72a1083a6ec58937",
+          "replyKey": "9d5f087cf08e576012dad8359963a506c0bb9c67381de5900e3e46dd9efe5a6b"
+        },
+        "ownerPreimageHex": "6563686f2e71712e63326300763200000000056f776e65720000000b73796e74682d6170702d41000000036332630000001853594e5448455449435f4f574e45525f4f50454e49445f41"
+      }
+    },
+    {
+      "id": "present-empty",
+      "input": {
+        "appId": "synth-app-A",
+        "rawOpenid": "SYNTHETIC_OWNER_OPENID_A",
+        "rawMsgId": "synthetic-message-A",
+        "indexKind": "present",
+        "indexValue": "msg_idx="
+      },
+      "expected": {
+        "ownerHash": "oh2_5a9e7e7a7c2edea2b3eeefdc58e2c5eee19d34b2ce16e4fd2902113620e5ba9d",
+        "chatId": "official:c2c:v2:5a9e7e7a7c2edea2b3eeefdc58e2c5eee19d34b2ce16e4fd2902113620e5ba9d",
+        "scopeKey": "sc2_5b460aa095fbc9b8d0a2eae72cfe3ea5b9cf5e25bfc5cc8fbded0ebed02f2f63",
+        "replyAnchorKey": "ra2_918fc68590d99341d5c794b8d82a2a9f76a96f3b52ee3e9f0b8752942726ec73",
+        "inboundKey": "in2_9c7023b6722abc8a111b86c9bce31a6b68ad723bb3ba4e696ac61736349512cb",
+        "v1": {
+          "namespace": "ac9f8c7a087994c4d286909b30e6d3467f7b01902633724f10b19a8ab15f428c",
+          "inboundKey": "5a30f0f793949efd1113bb543edee27d23cb5d7022a8bdc471158e4365a64c25",
+          "replyKey": "9d5f087cf08e576012dad8359963a506c0bb9c67381de5900e3e46dd9efe5a6b"
+        },
+        "ownerPreimageHex": "6563686f2e71712e63326300763200000000056f776e65720000000b73796e74682d6170702d41000000036332630000001853594e5448455449435f4f574e45525f4f50454e49445f41"
+      }
+    },
+    {
+      "id": "different-app",
+      "input": {
+        "appId": "synth-app-B",
+        "rawOpenid": "SYNTHETIC_OWNER_OPENID_A",
+        "rawMsgId": "synthetic-message-A",
+        "indexKind": "missing",
+        "indexValue": ""
+      },
+      "expected": {
+        "ownerHash": "oh2_a251ce93fe28d1e2538b4b1784d4955979ebdd32a2155fb58f7fb52aefc28506",
+        "chatId": "official:c2c:v2:a251ce93fe28d1e2538b4b1784d4955979ebdd32a2155fb58f7fb52aefc28506",
+        "scopeKey": "sc2_0497812a704ad17882df70d69591616813699ad76e2e5b64a360c999f59d2fc1",
+        "replyAnchorKey": "ra2_13ee40a341dfa380976acc4f9730bb9697a96e55f74a47402f590129e88ffcdf",
+        "inboundKey": "in2_b7bd104eb2c741576a39adb9352bafdc78977f1a72daabcb18154cc8e154d81f",
+        "v1": {
+          "namespace": "0083d9ed25d7fdac361847c6e8e1bc88c9723b3676502ce512e4f4026bc444b0",
+          "inboundKey": "d27e0dfa803ebfb47cea500376b358cd9eeda452b1559003c8427b96db602575",
+          "replyKey": "d27e0dfa803ebfb47cea500376b358cd9eeda452b1559003c8427b96db602575"
+        },
+        "ownerPreimageHex": "6563686f2e71712e63326300763200000000056f776e65720000000b73796e74682d6170702d42000000036332630000001853594e5448455449435f4f574e45525f4f50454e49445f41"
+      }
+    },
+    {
+      "id": "different-owner",
+      "input": {
+        "appId": "synth-app-A",
+        "rawOpenid": "SYNTHETIC_OWNER_OPENID_B",
+        "rawMsgId": "synthetic-message-A",
+        "indexKind": "missing",
+        "indexValue": ""
+      },
+      "expected": {
+        "ownerHash": "oh2_0110bbcbbe7fccd1d284f6c53cfc903677c3ab83d9707bf4a2ce2a720d3061c7",
+        "chatId": "official:c2c:v2:0110bbcbbe7fccd1d284f6c53cfc903677c3ab83d9707bf4a2ce2a720d3061c7",
+        "scopeKey": "sc2_c11cadbb8445dd939a4e49c5ee4c519e73b1999edc440b6772fc9c8430d8c1e0",
+        "replyAnchorKey": "ra2_56e0b6ee16cee49d56150407a88a8e75b16ad3e381f92692c7b22b88192166a3",
+        "inboundKey": "in2_9706319588ae3ff1f32b2e3251ae6244bcd6fc25b9efb169fa2e0f42b7888019",
+        "v1": {
+          "namespace": "c8d0b1400eb705758866ca43cbd294ce795799c1108591f1780b12d22d4e38d6",
+          "inboundKey": "9d5f087cf08e576012dad8359963a506c0bb9c67381de5900e3e46dd9efe5a6b",
+          "replyKey": "9d5f087cf08e576012dad8359963a506c0bb9c67381de5900e3e46dd9efe5a6b"
+        },
+        "ownerPreimageHex": "6563686f2e71712e63326300763200000000056f776e65720000000b73796e74682d6170702d41000000036332630000001853594e5448455449435f4f574e45525f4f50454e49445f42"
+      }
+    },
+    {
+      "id": "unicode-nfc",
+      "input": {
+        "appId": "synth-app-A",
+        "rawOpenid": "SYNTHETIC_OWNER_OPENID_A",
+        "rawMsgId": "synthetic-é",
+        "indexKind": "missing",
+        "indexValue": ""
+      },
+      "expected": {
+        "ownerHash": "oh2_5a9e7e7a7c2edea2b3eeefdc58e2c5eee19d34b2ce16e4fd2902113620e5ba9d",
+        "chatId": "official:c2c:v2:5a9e7e7a7c2edea2b3eeefdc58e2c5eee19d34b2ce16e4fd2902113620e5ba9d",
+        "scopeKey": "sc2_5b460aa095fbc9b8d0a2eae72cfe3ea5b9cf5e25bfc5cc8fbded0ebed02f2f63",
+        "replyAnchorKey": "ra2_97ae25adb62eb911b677f3dedfdc475c2d24aaeb4c4739377e4734ef51568199",
+        "inboundKey": "in2_e0138c4e784b50353d45b86b49fbfc4fb2b0a4962a61d12ca4ace649a51643ce",
+        "v1": {
+          "namespace": "ac9f8c7a087994c4d286909b30e6d3467f7b01902633724f10b19a8ab15f428c",
+          "inboundKey": "b632a733d83bb30045b145f1018d9a9921b36b044d5a1a31935bd96837ae2a6f",
+          "replyKey": "b632a733d83bb30045b145f1018d9a9921b36b044d5a1a31935bd96837ae2a6f"
+        },
+        "ownerPreimageHex": "6563686f2e71712e63326300763200000000056f776e65720000000b73796e74682d6170702d41000000036332630000001853594e5448455449435f4f574e45525f4f50454e49445f41"
+      }
+    },
+    {
+      "id": "unicode-nfd",
+      "input": {
+        "appId": "synth-app-A",
+        "rawOpenid": "SYNTHETIC_OWNER_OPENID_A",
+        "rawMsgId": "synthetic-é",
+        "indexKind": "missing",
+        "indexValue": ""
+      },
+      "expected": {
+        "ownerHash": "oh2_5a9e7e7a7c2edea2b3eeefdc58e2c5eee19d34b2ce16e4fd2902113620e5ba9d",
+        "chatId": "official:c2c:v2:5a9e7e7a7c2edea2b3eeefdc58e2c5eee19d34b2ce16e4fd2902113620e5ba9d",
+        "scopeKey": "sc2_5b460aa095fbc9b8d0a2eae72cfe3ea5b9cf5e25bfc5cc8fbded0ebed02f2f63",
+        "replyAnchorKey": "ra2_1fdfcc4c78a5698af3d56c31c4d918418fed0ed6d783c1d54d7053d0be9b2cf6",
+        "inboundKey": "in2_2d757be25ddad8d41e9f830e26a003aa23e779efb0920216181123666f8b30c4",
+        "v1": {
+          "namespace": "ac9f8c7a087994c4d286909b30e6d3467f7b01902633724f10b19a8ab15f428c",
+          "inboundKey": "a704b77ed60e39898182163a5f6f98e2562586f8fdaf60d8bcc423b94e09a954",
+          "replyKey": "a704b77ed60e39898182163a5f6f98e2562586f8fdaf60d8bcc423b94e09a954"
+        },
+        "ownerPreimageHex": "6563686f2e71712e63326300763200000000056f776e65720000000b73796e74682d6170702d41000000036332630000001853594e5448455449435f4f574e45525f4f50454e49445f41"
+      }
+    }
+  ]
+}

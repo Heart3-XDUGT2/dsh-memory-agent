@@ -1,0 +1,233 @@
+import { test } from 'node:test'
+import assert from 'node:assert/strict'
+import { fixture, identity, gate, tick, createOfficialInput, MemoryMetadataStore } from './fixtures/echo022-state.mjs'
+
+test('missing metadata repository/dependencies never creates an accepted capability', () => {
+  assert.throws(() => createOfficialInput({}), /dependencies_required/)
+  assert.throws(() => fixture({ metadataStore: new Map() }), /dependencies_required/)
+})
+test('receipt commit precedes worker release; accepted never means entered or body persistence', async () => {
+  const f = fixture(), r = await f.component.inject(identity())
+  assert.equal(r.everAccepted, true); assert.equal(r.processingState, 'queued_volatile')
+  assert.equal(r.metadataDurability, 'memory-test'); assert.equal(r.bodyDurable, false)
+  assert.equal(f.published.length, 0)
+  assert.equal(f.constructed.length, 1)
+  await f.run()
+  assert.equal(f.published.length, 1)
+  assert.equal(f.registered[0].message, f.published[0])
+  assert.equal(f.constructed[0], f.published[0])
+  assert.equal(f.published[0].source.replyContext.version, 2)
+  assert.equal(f.published[0].source.replyContext.keyScheme, 'eqqc2c-lp32-v2')
+})
+test('concurrent same input has one admitting owner; pending is never accepted duplicate', async () => {
+  const hold = gate(), entered = gate(), store = new MemoryMetadataStore()
+  store.before = async ({ call }) => { if (call === 1) { entered.resolve(); await hold.promise } }
+  const f = fixture({ metadataStore: store }), a = f.component.inject(identity())
+  await entered.promise
+  const b = await f.component.inject(identity())
+  assert.equal(b.admissionState, 'admitting'); assert.equal(b.duplicate, false); assert.equal(b.ok, false)
+  assert.equal(f.constructed.length, 0)
+  hold.resolve(); const accepted = await a; await f.run()
+  const duplicate = await f.component.inject(identity())
+  assert.equal(duplicate.duplicate, true); assert.deepEqual(duplicate.receipt, accepted.receipt)
+  assert.equal(f.published.length, 1); assert.equal(f.constructed.length, 1)
+})
+test('different component sharing repository cannot create a second model task', async () => {
+  const store = new MemoryMetadataStore(), a = fixture({ metadataStore: store }), b = fixture({ metadataStore: store })
+  const results = await Promise.all([a.component.inject(identity()), b.component.inject(identity())])
+  assert.equal(results.filter(r => r.everAccepted === true).length, 1)
+  assert.equal(results.filter(r => r.admissionState === 'admitting' && !r.duplicate).length, 1)
+  assert.equal((await b.component.inject(identity())).duplicate, true)
+  await a.run(); await b.run()
+  assert.equal(a.published.length + b.published.length, 1)
+})
+test('same inbound identity cannot change text, anchor or bound scope', async () => {
+  const f = fixture(); await f.component.inject(identity())
+  assert.equal((await f.component.inject(identity('a', { text: 'different' }))).conflict, true)
+  assert.equal((await f.component.inject(identity('a', { replyAnchorKey: identity('b').replyAnchorKey }))).conflict, true)
+  const bad = identity(); bad.scope = { ...bad.scope, appId: 'OtherApp' }
+  assert.equal((await f.component.inject(bad)).reason, 'scope_conflict')
+  await f.run(); assert.equal(f.published.length, 1)
+})
+test('Abort before accepted commit is a transaction-fenced not_accepted outcome', async () => {
+  const hold = gate(), resolving = gate(), f = fixture({ resolveTarget: async () => { resolving.resolve(); await hold.promise; return f.target } })
+  const ac = new AbortController(), pending = f.component.inject(identity(), { signal: ac.signal })
+  await resolving.promise; ac.abort(); await f.settle(); hold.resolve()
+  const r = await pending; await f.run()
+  assert.equal(r.admissionState, 'not_accepted'); assert.equal(r.everAccepted, false)
+  assert.equal(r.absenceIsFence, true); assert.equal(f.published.length, 0)
+})
+test('Abort after accepted commit preserves original receipt and everAccepted', async () => {
+  const hold = gate(), committed = gate(), store = new MemoryMetadataStore()
+  store.afterCommit = async ({ record }) => { if (record?.admissionState === 'accepted' && record.stateVersion === 2) { committed.resolve(); await hold.promise } }
+  const f = fixture({ metadataStore: store }), ac = new AbortController()
+  const pending = f.component.inject(identity(), { signal: ac.signal })
+  await committed.promise; ac.abort(); hold.resolve()
+  const r = await pending; await f.settle(); await f.run()
+  assert.equal(r.everAccepted, true); assert.ok(r.receipt)
+  const again = await f.component.inject(identity())
+  assert.equal(again.duplicate, true); assert.deepEqual(again.receipt, r.receipt)
+  assert.equal(f.published.length, 0)
+})
+test('accepted response lost at caller replays original receipt without new message', async () => {
+  const f = fixture(), lost = await f.component.inject(identity())
+  await f.run()
+  const recovered = await f.component.inject(identity())
+  assert.equal(recovered.duplicate, true); assert.deepEqual(recovered.receipt, lost.receipt)
+  assert.equal(f.constructed.length, 1); assert.equal(f.published.length, 1)
+})
+for (const phase of ['claim', 'accept']) test('repository ' + phase + ' failure closes component and does not claim not_accepted', async () => {
+  const store = new MemoryMetadataStore()
+  store.before = ({ record }) => { if (phase === 'claim' ? !record : record?.admissionState === 'admitting') throw Error('synthetic metadata write failure') }
+  const f = fixture({ metadataStore: store }), r = await f.component.inject(identity())
+  assert.equal(r.admissionState, 'unknown'); assert.equal(r.everAccepted, null)
+  assert.equal(f.component.status().active, false)
+  await f.run(); assert.equal(f.published.length, 0)
+})
+test('capacity eviction keeps accepted receipt but never auto-reinjects its source', async () => {
+  const f = fixture({ capacity: 1 }), first = await f.component.inject(identity('first'))
+  const second = await f.component.inject(identity('second')); await f.settle()
+  const duplicate = await f.component.inject(identity('first'))
+  assert.equal(duplicate.duplicate, true); assert.equal(duplicate.processingState, 'evicted')
+  assert.deepEqual(duplicate.receipt, first.receipt)
+  await f.run()
+  assert.equal(f.published.length, 1); assert.equal(f.published[0].id, second.receipt.hostMessageId)
+})
+test('peek await then eviction removes exactly the captured key, not new queue head', async () => {
+  const hold = gate(), waiting = gate()
+  const f = fixture({ capacity: 1, worker: { wait: async () => { waiting.resolve(); await hold.promise; return { kind: 'ready' } } } })
+  await f.component.inject(identity('old'))
+  const work = f.component.pump(); await waiting.promise
+  const b = await f.component.inject(identity('new'))
+  hold.resolve(); await work; await f.run()
+  assert.equal(f.published.length, 1); assert.equal(f.published[0].id, b.receipt.hostMessageId)
+})
+test('busy limit counts allowed busy results; limit+1 exhausts exactly once', async () => {
+  let waits = 0
+  const f = fixture({ busyLimit: 2, worker: { wait: async () => { waits++; return { kind: 'busy' } } } })
+  const accepted = await f.component.inject(identity()); await f.run(); await f.settle()
+  assert.equal(waits, 3); assert.equal(f.published.length, 0)
+  const status = await f.component.sourceStatus(identity())
+  assert.equal(status.record.processingState, 'retry_exhausted'); assert.equal(status.everAccepted, true)
+  assert.equal(status.admissionReceiptId, accepted.admissionReceiptId)
+})
+test('busy retry retains exact constructed message and source reference', async () => {
+  let waits = 0
+  const f = fixture({ worker: { wait: async () => ({ kind: ++waits < 3 ? 'busy' : 'ready' }) } })
+  await f.component.inject(identity()); await f.run()
+  assert.equal(f.constructed.length, 1); assert.equal(waits, 3)
+  assert.equal(f.constructed[0], f.published[0])
+  assert.equal(f.constructed[0].source, f.published[0].source)
+})
+test('non-busy worker failure has a visible terminal state', async () => {
+  const f = fixture({ worker: { wait: async () => { throw Error('synthetic nonbusy failure') } } })
+  await f.component.inject(identity()); await f.run(); await f.settle()
+  assert.equal((await f.component.sourceStatus(identity())).processingState, 'worker_failed')
+})
+test('tracker refusal is visible and never calls followup', async () => {
+  const f = fixture()
+  f.tracker.registerSource = () => ({ ok: false, reason: 'source_capacity' })
+  await f.component.inject(identity()); await f.run(); await f.settle()
+  assert.equal(f.published.length, 0)
+  assert.equal((await f.component.sourceStatus(identity())).processingState, 'tracker_rejected')
+})
+test('followup may succeed then throw: unknown processing and accepted duplicate never repost', async () => {
+  const f = fixture()
+  f.agent.followup = message => { f.published.push(message); throw Error('synthetic lost followup result') }
+  const r = await f.component.inject(identity()); await f.run()
+  assert.equal((await f.component.sourceStatus(identity())).processingState, 'unknown')
+  const duplicate = await f.component.inject(identity()); await f.run()
+  assert.equal(duplicate.duplicate, true); assert.deepEqual(duplicate.receipt, r.receipt)
+  assert.equal(f.published.length, 1)
+})
+test('post-followup metadata write failure closes further publishing', async () => {
+  const store = new MemoryMetadataStore(), f = fixture({ metadataStore: store })
+  store.before = ({ record }) => { if (record?.processingState === 'publishing' && f.published.length) throw Error('synthetic post enqueue failure') }
+  await f.component.inject(identity()); await f.run()
+  assert.equal(f.published.length, 1); assert.equal(f.component.status().active, false)
+  assert.equal((await f.component.inject(identity())).ok, false)
+})
+for (const change of ['revoke', 'generation', 'target']) test(change + ' during await prevents late followup', async () => {
+  const hold = gate(), waiting = gate(), f = fixture({ worker: { wait: async () => { waiting.resolve(); await hold.promise; return { kind: 'ready' } } } })
+  await f.component.inject(identity())
+  const work = f.component.pump(); await waiting.promise
+  if (change === 'revoke') f.component.revoke()
+  else if (change === 'generation') f.generation(2)
+  else f.replaceTarget()
+  hold.resolve(); await work; await f.run(); await f.settle()
+  assert.equal(f.published.length, 0)
+  assert.equal((await f.component.sourceStatus(identity())).everAccepted, true)
+})
+test('late publish callback after revoke cannot register a source or enqueue', async () => {
+  const hold = gate(), waiting = gate()
+  const f = fixture({ worker: { publish: async (_target, fn) => { waiting.resolve(); await hold.promise; fn(); return { kind: 'published' } } } })
+  await f.component.inject(identity())
+  const work = f.component.pump(); await waiting.promise; f.component.revoke()
+  const before = await f.component.drain({ timeoutMs: 5 })
+  assert.equal(before.drained, false); assert.ok(before.pendingTasks.some(t => t.type === 'worker'))
+  hold.resolve(); await work; await f.run(); await f.settle()
+  assert.equal(f.published.length, 0); assert.equal(f.registered.length, 0)
+})
+test('never-settling target dependency reports pending drain and does not close shared store', async () => {
+  const waiting = gate(), never = new Promise(() => {})
+  const f = fixture({ resolveTarget: async () => { waiting.resolve(); await never } })
+  void f.component.inject(identity())
+  await waiting.promise; f.component.revoke(); await tick()
+  const result = await f.component.drain({ timeoutMs: 5 })
+  assert.equal(result.drained, false); assert.equal(result.sharedStoreClosed, false)
+  assert.ok(result.pendingTasks.some(t => t.type === 'admission'))
+  assert.equal(f.published.length, 0)
+})
+test('ordinary absent metadata read is never authoritative absence or permission to retry', async () => {
+  const f = fixture(), r = await f.component.sourceStatus(identity('missing'))
+  assert.equal(r.queryState, 'unknown'); assert.equal(r.everAccepted, null); assert.equal(r.absenceIsFence, false)
+})
+test('abort after eviction cannot overwrite its terminal processing fact', async () => {
+  const f = fixture({ capacity: 1 }), ac = new AbortController()
+  await f.component.inject(identity('evicted'), { signal: ac.signal })
+  await f.component.inject(identity('kept')); await f.settle()
+  ac.abort(); await f.settle()
+  assert.equal((await f.component.sourceStatus(identity('evicted'))).processingState, 'evicted')
+})
+test('message factory must preserve complete immutable content and v2 source', async () => {
+  let serial = 0
+  const createMessage = input => Object.freeze({ ...input, id: 'bad-' + ++serial, content: [{ type: 'text', text: 'altered' }] })
+  const f = fixture({ createMessage })
+  const result = await f.component.inject(identity()); await f.run()
+  assert.equal(result.everAccepted, false)
+  assert.equal(f.published.length, 0)
+})
+test('cross-scope inbound reuse is rejected by repository unique identity fence', async () => {
+  const store = new MemoryMetadataStore(), a = fixture({ metadataStore: store })
+  const other = identity('a').scope
+  const id = (await import('./fixtures/echo022-state.mjs')).codec.deriveMessageIdentity({ appId: other.appId, rawOpenid: 'SyntheticOwnerB', rawMsgId: 'other', indexKind: 'missing', indexValue: '' })
+  const b = fixture({ metadataStore: store, scope: { ...other, ownerHash: id.ownerHash, chatId: id.chatId } })
+  await a.component.inject(identity())
+  assert.equal((await b.component.inject({ ...identity(), scope: b.component.scope })).conflict, true)
+  await a.run(); await b.run()
+  assert.equal(a.published.length + b.published.length, 1)
+})
+test('foreign or restarted component cannot mistake a metadata queue marker for its own live body', async () => {
+  const store = new MemoryMetadataStore(), first = fixture({ metadataStore: store })
+  const accepted = await first.component.inject(identity())
+  const fresh = fixture({ metadataStore: store })
+  const read = await fresh.component.sourceStatus(identity())
+  assert.equal(read.everAccepted, true); assert.equal(read.processingState, 'unknown')
+  assert.equal(read.record.processingState, 'queued_volatile')
+  assert.equal((await fresh.component.inject(identity())).admissionReceiptId, accepted.admissionReceiptId)
+  await fresh.run(); assert.equal(fresh.published.length, 0)
+})
+test('drain distinguishes completed callbacks from locally uncommitted unknown processing', async () => {
+  const store = new MemoryMetadataStore(), f = fixture({ metadataStore: store })
+  store.before = ({ record }) => { if (record?.processingState === 'publishing' && f.published.length) throw Error('synthetic lost metadata result') }
+  const r = await f.component.inject(identity()); await f.run()
+  const drained = await f.component.drain()
+  assert.equal(drained.drained, true)
+  assert.ok(drained.unresolvedSources.includes(r.sourceKey))
+})
+test('scheduled but unconsumed worker is explicitly not drained', async () => {
+  const f = fixture(); await f.component.inject(identity())
+  assert.equal((await f.component.drain()).drained, false)
+  assert.equal((await f.component.drain()).scheduled, true)
+  f.component.revoke(); await f.run()
+})

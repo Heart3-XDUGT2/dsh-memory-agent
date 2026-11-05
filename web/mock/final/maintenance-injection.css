@@ -1,0 +1,26 @@
+/* Limited to staged maintenance/injection; existing shell and dp tokens own style. */
+.mb-page .mb-file { padding: 20px 0; border-top: 1px solid var(--rule); min-width: 0; }
+.mb-page .mb-file .dp-button { margin: 14px 10px 0 0; }
+.mb-page .mb-operation[hidden] { display: none; }
+.mb-page .mb-operation { border-color: var(--control); }
+.mb-page .mb-operation .dp-button { margin: 16px 12px 0 0; }
+.mb-page .mb-injection-part { padding: 18px 0; border-top: 1px solid var(--rule); }
+.mb-page .mb-injection-part > summary { min-height: 44px; cursor: pointer; line-height: 1.65; overflow-wrap: anywhere; }
+.mb-page .mb-prose { white-space: pre-wrap; overflow-wrap: anywhere; max-width: 75ch; line-height: 1.75; }
+.mb-page .dp-field { margin-bottom: 16px; }
+.mb-tasks { display: flex; flex-wrap: wrap; gap: 8px; }
+.mb-tasks [aria-pressed="true"] { background: var(--surface); border-color: var(--text); font-weight: 500; }
+.mb-page .dp-section[hidden] { display: none; }
+.mb-files { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 0 24px; }
+.mb-page .dp-section { scroll-margin-top: 72px; }
+.mb-page .mb-file-heading { display: flex; justify-content: space-between; align-items: baseline; gap: 16px; }
+.mb-page .mb-file-heading h3 { margin: 0; }
+.mb-page .mb-file-heading span { color: var(--muted); }
+.mb-page .mb-file-details { margin-top: 8px; }
+.mb-page .mb-file-details > summary { cursor: pointer; min-height: 40px; display: flex; align-items: center; color: var(--muted); }
+.mb-page .mb-file-details .dp-kv { margin: 12px 0; }
+@media (max-width: 640px) {
+  .mb-files { grid-template-columns: minmax(0,1fr); }
+  .mb-tasks { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); }
+  .mb-page .mb-file-details > summary { min-height: 44px; }
+}

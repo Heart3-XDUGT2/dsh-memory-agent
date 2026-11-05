@@ -1,0 +1,5 @@
+blank_issues_enabled: false
+contact_links:
+  - name: 安全报告说明
+    url: https://github.com/Heart3-XDUGT2/dsh-memory-agent/blob/main/SECURITY.md
+    about: 不在公开issue提交漏洞细节或个人数据。

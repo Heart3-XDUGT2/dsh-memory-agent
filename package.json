@@ -1,0 +1,138 @@
+{
+  "name": "dsh-echo",
+  "version": "0.46.0-rc.1",
+  "description": "Echo: DeepSeek Harness companion personality, memory and local control panel",
+  "type": "module",
+  "main": "lib/index.js",
+  "exports": {
+    ".": "./lib/index.js",
+    "./client": "./lib/client.js",
+    "./package.json": "./package.json",
+    "./compaction": "./lib/compaction.js",
+    "./official-c2c-codec": "./lib/official-c2c-codec.js",
+    "./qq-file-text": "./lib/qq-file-text.js"
+  },
+  "files": [
+    "lib/",
+    "web/",
+    "python/worker.py",
+    "python/engine/",
+    "cordis.patch.yml",
+    "preset.patch.yml",
+    ".preset-patch-generated.json",
+    "scripts/",
+    "docs/API.md",
+    "docs/ARCHITECTURE.md",
+    "docs/MEMORY_ARCHITECTURE.md",
+    "docs/COMPAT_DSH_0.2.md",
+    "docs/INSTALL.md",
+    "docs/TESTING.md",
+    "docs/releases/",
+    "docs/images/",
+    "README.md",
+    "CHANGELOG.md",
+    "PRIVACY.md",
+    "SECURITY.md",
+    "CONTRIBUTING.md",
+    "THIRD_PARTY.md",
+    "LICENSES/",
+    "npm-shrinkwrap.json",
+    "docs/vendor/",
+    "docs/EMOTION_SPACE.md"
+  ],
+  "comment:packaging": "Explicit runtime code, web assets, legal notices and selected active documentation. Tests and historical screenshots are excluded from the npm artifact. prepack cleanup is guarded within this checkout; release-check runs that cleanup explicitly before requesting npm JSON.",
+  "engines": {
+    "node": ">=22.5"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": [
+        "./cordis.patch.yml",
+        "./preset.patch.yml"
+      ]
+    },
+    "client": {
+      "platform": "web",
+      "inject": [
+        "@deepseek-ai/dsh-client-locale",
+        "@deepseek-ai/dsh-client-runtime",
+        "@deepseek-ai/dsh-client-ui-primitives"
+      ]
+    }
+  },
+  "comment:presetPatch": "v0.44.0:preset.patch.yml 是**生成物**(scripts/install-preset.mjs 按宿主世代写)—— 0.2.0 世代填 @deepseek-ai/dsh-agent-preset 声明行,0.1.5 世代是空存根(0.1.5 认不出那个包,真声明行有搞坏插件树的风险)。注意上面 patch 字段的**形态**也是按世代的:0.1.5 的 loadProfileDirectory 只吃字符串(数组当场 path.join 炸,2026-10-02 实测),0.2.0 的 bundlePatchFiles 才收一串路径 —— 所以生成器会按世代把它摆正(0.2.0 世代 = [\"./cordis.patch.yml\", \"./preset.patch.yml\"]),世代门 check-preset-patch.mjs 看住装反的情况。",
+  "comment:hostPackages": "Runtime @deepseek-ai/* packages are provided by DSH; development tests pin real public packages in devDependencies. No private host paths or junctions are required.",
+  "comment:compat": "The peer range records the existing two-generation integration contract. This prerelease verifies Node24 and exact public DSH0.2.0-rc.2 development modules; the optional peer prevents npm from implicitly installing an entire host. Earlier0.1.5-rc.3 evidence is historical, not a new full release certification.",
+  "peerDependencies": {
+    "@deepseek-ai/dsh": ">=0.1.5-rc.3 <0.3.0"
+  },
+  "dependencies": {
+    "saxes": "6.0.0",
+    "unpdf": "1.4.0",
+    "yauzl": "3.4.0"
+  },
+  "scripts": {
+    "check": "node scripts/release-check.mjs",
+    "test": "node scripts/test.mjs unit",
+    "clean:pyc": "node scripts/clean-pyc.mjs",
+    "prepack": "node scripts/clean-pyc.mjs",
+    "check:tools": "node scripts/check_tools.mjs",
+    "check:names": "node scripts/check-names.mjs",
+    "check:persona": "node scripts/check-echo-persona.mjs",
+    "care:report": "node scripts/echoq.mjs --since 24h",
+    "accept:p2": "node scripts/accept-p2.mjs",
+    "accept:inject": "node scripts/accept-inject.mjs",
+    "accept:observe": "node scripts/accept-observe.mjs",
+    "memory:doctor": "node scripts/memory-doctor.mjs",
+    "hygiene": "node scripts/hygiene.mjs",
+    "voice": "node scripts/voice-metrics.mjs",
+    "retire": "node scripts/retire-a-side.mjs",
+    "rehearse": "node scripts/rehearse-migration.mjs",
+    "test:py": "node scripts/test-python.mjs",
+    "probe": "python python/tests/consistency_probe.py",
+    "install-plugin": "node scripts/install.mjs",
+    "test:unit": "node scripts/test.mjs unit",
+    "test:integration": "node scripts/test.mjs integration",
+    "test:all": "node scripts/test.mjs all",
+    "dev:bootstrap": "node scripts/dev-bootstrap.mjs",
+    "release:check": "node scripts/release-check.mjs",
+    "check:live-config": "node scripts/live-config-guard.mjs"
+  },
+  "keywords": [
+    "deepseek",
+    "deepseek-harness",
+    "dsh",
+    "companion",
+    "persona",
+    "memory",
+    "陪伴"
+  ],
+  "license": "MIT",
+  "devDependencies": {
+    "@deepseek-ai/cordis": "4.0.4",
+    "@deepseek-ai/dsh-agent": "0.2.0-rc.2",
+    "@deepseek-ai/dsh-agent-loop": "0.2.0-rc.2",
+    "@deepseek-ai/dsh-compaction-basic": "0.2.0-rc.2",
+    "@deepseek-ai/dsh-fs-local": "0.2.0-rc.2",
+    "@deepseek-ai/dsh-llm": "0.2.0-rc.2",
+    "@deepseek-ai/dsh-session": "0.2.0-rc.2",
+    "@deepseek-ai/dsh-session-projection": "0.2.0-rc.2",
+    "@deepseek-ai/dsh-system-prompt": "0.2.0-rc.2",
+    "@deepseek-ai/dsh-tool-present": "0.2.0-rc.2",
+    "@deepseek-ai/dsh-tools": "0.2.0-rc.2",
+    "ws": "8.22.1"
+  },
+  "peerDependenciesMeta": {
+    "@deepseek-ai/dsh": {
+      "optional": true
+    }
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Heart3-XDUGT2/dsh-memory-agent.git"
+  },
+  "bugs": {
+    "url": "https://github.com/Heart3-XDUGT2/dsh-memory-agent/issues"
+  },
+  "homepage": "https://github.com/Heart3-XDUGT2/dsh-memory-agent#readme"
+}

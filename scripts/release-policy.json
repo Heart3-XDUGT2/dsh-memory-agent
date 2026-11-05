@@ -1,0 +1,27 @@
+{
+  "approvedImages": {
+    "docs/images/emotion-desktop.png": "468bb9b613798295492e9401f2ff27a545baf98c73480841bde12863f1eeb3c3",
+    "docs/images/emotion-mobile.png": "56b4c56ecead75bc951a73feb6f36f8d0c63b71623f8c483c978cd14e84a55b2"
+  },
+  "approvedBinaryFixtures": {
+    "tests/fixtures/qq-file-text/synthetic-paragraph-table-deflated.docx": "5809caa6147f90ccb8ba4855ef0d6bd9121d95dc7bda16ff89a446cd6ceb48cc",
+    "tests/fixtures/qq-file-text/synthetic-paragraph-table.docx": "e3c77d3a3984f6ac84ebcf06c4d8af7284e92580ead3a836e17bd40604090b74",
+    "tests/fixtures/qq-file-text/synthetic-two-page-zh.pdf": "179eff16634b86760ccdd5c70c0137a13842e428bf873536607ac2ba82a4e463"
+  },
+  "credentialAllowlist": [
+    {
+      "file": "tests/eyes.test.js",
+      "rule": "private-home-path",
+      "sha256": "42b3c0461acbcccbcefecda9ebc046e1ccd9b2fcd2e1181c9e47063d6e63a6a1",
+      "occurrences": 1,
+      "reason": "固定合成Windows文件名路径负例，全文SHA锁定，不读取本机home。"
+    },
+    {
+      "file": "tests/webpage.test.js",
+      "rule": "private-home-path",
+      "sha256": "e4ad8cdd1161dc0bb82ba85fa64b906d5fc2fc9c63753ffcdd2356158dffc388",
+      "occurrences": 2,
+      "reason": "固定合成Windows fileURL与期望根路径，全文SHA锁定，不读取本机home。"
+    }
+  ]
+}

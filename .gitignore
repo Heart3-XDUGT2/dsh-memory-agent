@@ -1,0 +1,51 @@
+node_modules
+node_modules/
+__pycache__/
+*.pyc
+*.log
+.DS_Store
+Thumbs.db
+# 本机研究草稿区(检索实验的 dump / 论文 HTML / 真库快照,动辄 10MB 级)——
+# 2026-09-29 交接时补。它里面还躺着一份**真库快照**(diag/*.db),绝不能进 git。
+/.scratch/
+# AstrBot 的库在 import 时会往**当前工作目录**写一份默认 data/(实测:跑
+# 「壳 × 真宿主」那组测试时冒出来过)。那是宿主的运行痕迹,不是仓库的东西 ——
+# 运行器已改成在临时目录里跑;这条是第二道保险。
+data/
+
+# Step B:向量臂的运行时状态快照(worker 写的,不是源文件)
+/embed-state.json
+
+# 前端改版期间的一次性备份目录（物理回滚点，不进 git）
+/web/mock/final.bak-*/
+# 旧的过程稿 mock 版本（v3/v4/v5/seed/bold），只有 final 是当前版本
+/web/mock/v3/
+/web/mock/v4/
+/web/mock/v5/
+/web/mock/seed.html
+/web/mock/seed.css
+/web/mock/seed.js
+/web/mock/bold/
+
+# 过程稿：单个 mock 文件与 v9（实验版），只有 final 是当前版本
+/web/mock/v3.js
+/web/mock/v9/
+/web/mock/overview.html
+/web/mock/overview.css
+# final 里的临时备份副本（人工回滚用，不进 git）
+/web/mock/final/*.bak-*
+
+# Private runtime data and local credentials
+.env
+.env.*
+!.env.example
+*.db
+*.db-*
+*.sqlite*
+*.log
+config.json
+profile.json
+/credentials/
+/state/
+/backups/
+/.taste-skill/

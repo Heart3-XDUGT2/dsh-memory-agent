@@ -1,0 +1,25 @@
+# 全仓 LF-only(2026-09-29 交接时补;qq 仓早就有同一份,主仓此前缺 —— 于是每次
+# `git add` 都刷一屏 `LF will be replaced by CRLF` 警告,而且入库换行取决于谁的本机
+# core.autocrlf,同一份源码在不同机器上 diff 会不一样)。
+#
+# 说明:`text=auto` 让 git 自己认文本,`eol=lf` 让**工作区与库里都是 LF** ——
+# 不看 `core.autocrlf`(本机 = true,这条就是对着它写的)。
+* text=auto eol=lf
+
+# 二进制别碰
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.webp binary
+*.gif binary
+*.db binary
+*.pdf binary
+*.woff binary
+*.woff2 binary
+*.ttf binary
+*.otf binary
+# Upstream notices and source fixtures retain their original bytes.
+/LICENSES/*.txt -text
+/lib/ipc-core/LICENSE -text
+/web/vendor/LICENSE.d3.txt -text
+/tests/fixtures/host-web-app/** -text

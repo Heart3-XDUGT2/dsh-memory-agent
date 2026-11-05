@@ -1,0 +1,260 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Echo 审查台</title>
+<link rel="stylesheet" href="/echo/style.css">
+</head>
+<body>
+<div class="app">
+
+  <!-- ── 左栏:品牌 / 她的状态 / 分区导航 ───────────────────────
+       2026-09-27 审查台 3.0:视觉重做(层次化卡片 + 可展开 + 悬停反馈),
+       并新增「注入透视」——此前「她这一轮到底读到了什么」在面板上完全
+       看不到,只能直接翻 SQLite。左栏三枚状态丸常驻,不用翻页就知道她
+       在不在、引擎是 Python 还是 JS、桥通不通。 -->
+  <aside class="side">
+    <div class="brand">
+      <span class="logo">◉</span>
+      <span class="brand-t"><b>ECHO</b><i>审查台</i></span>
+    </div>
+
+    <div class="side-state" id="side-state">
+      <span class="pill off" id="pill-live">…</span>
+      <span class="pill" id="pill-engine">引擎…</span>
+      <span class="pill" id="pill-bridge">桥…</span>
+    </div>
+
+    <nav class="side-nav" id="side-nav">
+      <a class="navgrp">实时</a>
+      <a id="nav-ov" class="navlink" href="#/ov">总览</a>
+      <a id="nav-lg" class="navlink" href="#/lg">想念</a>
+      <a id="nav-em" class="navlink" href="#/em">情绪向量</a>
+      <a id="nav-emotion-space" class="navlink" href="#/emotion-space">情绪空间</a>
+      <a id="nav-au" class="navlink" href="#/au">审计面板 ↗ <span class="nb" id="nav-au-n"></span></a>
+      <a id="nav-inj" class="navlink" href="#/inj">注入透视</a>
+      <a class="navgrp">记忆</a>
+      <a id="nav-mm" class="navlink" href="#/mm">体检与记忆 <span class="nb" id="nav-mm-n"></span></a>
+      <a id="nav-th" class="navlink" href="#/th">悬置话题</a>
+      <a id="nav-gr" class="navlink" href="#/gr">图谱</a>
+      <a id="nav-di" class="navlink" href="#/di">她的日记</a>
+      <a class="navgrp">对话与系统</a>
+      <a id="nav-cv" class="navlink" href="#/cv">对话回放 <span class="nb" id="nav-cv-n"></span></a>
+      <a id="nav-sc" class="navlink" href="#/sc">会话范围</a>
+      <a id="nav-cfg" class="navlink" href="#/cfg">调参</a>
+      <!-- 配置中心(P2 §6.2):真源是 ~/.dsh/echo/ 下的数据文件,页面只走 /api/echo/** -->
+      <a class="navgrp">配置</a>
+      <a id="nav-persona" class="navlink" href="#/persona">人格</a>
+      <a id="nav-profile" class="navlink" href="#/profile">用户画像</a>
+      <a id="nav-naming" class="navlink" href="#/naming">称呼与显示</a>
+      <a id="nav-aliases" class="navlink" href="#/aliases">别名与人名</a>
+      <a id="nav-tuning" class="navlink" href="#/tuning">图论与显示</a>
+      <a id="nav-state-lexicon" class="navlink" href="#/state-lexicon">状态与词库</a>
+      <a id="nav-data-health" class="navlink" href="#/data-health">数据体检</a>
+    </nav>
+
+    <div class="side-foot">
+      <span id="side-ver">—</span>
+      <span id="side-dir" title="">—</span>
+    </div>
+  </aside>
+
+  <!-- ── 右栏:顶部工具条 + 当前分区 ───────────────────────── -->
+  <main class="main">
+    <div class="topbar">
+      <div class="tb-left">
+        <h1 id="tb-title">总览</h1>
+        <p class="tb-sub" id="tb-panel-sub">她现在什么样</p>
+      </div>
+      <div class="tb-right">
+        <span class="mono dim" id="tb-updated">—</span>
+        <!-- 保存反馈(配置中心):api.toast() 往这里写;文案表见 docs/CONFIG_CENTER_CONTRACT.md §4 -->
+        <span class="mono" id="tb-toast"></span>
+        <button class="btn" id="tb-refresh" type="button">刷新</button>
+        <label class="switch" title="冻结后停止 10 秒轮询 —— 读长文时不会被打断;切分区仍然会拉一次">
+          <input type="checkbox" id="tb-freeze"><span>冻结刷新</span>
+        </label>
+      </div>
+    </div>
+    <p class="tb-foot mono dim" id="page-sub">加载中…</p>
+
+    <!-- ① 上手引导条(P2 §6.2):不是一页,是常驻横幅 —— 数据没配好才出现,配好就自己消失。
+         内容由 web/views/setup-banner.js 运行时自建(只读 GET /api/echo/setup,深链来自服务端)。 -->
+    <div id="setup-banner" class="setup-banner" hidden></div>
+
+    <div class="panels">
+
+      <!-- 总览 -->
+      <section id="ov" class="panel">
+        <div class="stat-grid" id="ov-grid"></div>
+        <div class="note" id="ov-info">加载中…</div>
+      </section>
+
+      <!-- 想念 -->
+      <section id="lg" class="panel">
+        <p class="hint">幂律增长,消息脉冲削减,关怀后减半重积。阈值 7.0 起步(下限 4.5),她的委屈与依赖越高越忍不住。 <span class="badge" id="lg-engine">…</span></p>
+        <div id="lg-card"></div>
+      </section>
+
+      <!-- 情绪向量 -->
+      <section id="em" class="panel">
+        <p class="hint">三组向量:全局(疲惫/心情/唤醒)、对你(爱意/调皮/委屈/依赖)。0~10,横条只表示相对强度。数值来自她每轮反思时顺手打的标,不是关键词匹配。</p>
+        <div id="em-list"></div>
+      </section>
+
+      <!-- 情绪空间(2026-10-05 G5/G6:先出数据,圆盘/立方体随后两步加在同一页;
+           与配置中心的页同一个形状:壳是空 section,内容与说明都由视图文件画) -->
+      <section id="emotion-space" class="panel"></section>
+
+      <!-- 审计流(2026-09-29 重做:分层 + 三档密度 + 人话;信息一条不删) -->
+      <section id="au" class="panel">
+        <p class="hint">
+          <!-- 这里的两个名字(P1d)不写死:壳里先放中性词,app.js 取到
+               /api/echo/profile 之后填真名(端点没就绪就一直显示中性词)。 -->
+          <b>她的黑匣子</b> —— 一轮一张卡:<b id="au-hint-user">用户</b>的话、<b id="au-hint-agent">助手</b>的话、<b>提取器</b>的旁白各一行,
+          后台那些打分调用<b>折在轮脚下</b>(点开全在)。
+          <span class="dim">点任意一轮展开</span>,能看到那一轮实际注入给她的全文,
+          展开区最后永远附一份原始审计行(工具原名 / 会话 / trace / 全文)。
+          <span class="dim">SSE 实时推送,已收到 <b id="audit-count">0</b> 次。</span> <span class="badge" id="sse-badge">连接中…</span>
+        </p>
+        <div class="au-stat" id="au-stat"></div>
+        <div class="toolbar">
+          <input class="search" id="au-q" type="search" autocomplete="one-time-code" name="naf-au-q" spellcheck="false" autocapitalize="off" placeholder="搜:工具 / 内容 / 会话 / 关键词(按 / 聚焦)">
+          <span class="chips" id="au-chips"></span>
+          <button class="btn" id="au-fold" type="button">全部收起</button>
+        </div>
+        <!-- 主从两栏(2026-09-29 三改):左栏是**索引** —— 固定行高的单行列表,
+             只回答"哪一轮、谁的、什么类别、大概说了啥";右栏是**那一轮的全部**。
+             拥挤的根源是"想在一条时间线里把全部信息塞完",两栏之后两边都松了:
+             索引行永远一行(溢出省略号,不可能折成竖排),详情页只装一轮,可以放开排。 -->
+        <div class="au-split">
+          <div class="au-idx" id="au-list"></div>
+          <div class="au-detail" id="au-detail"></div>
+        </div>
+      </section>
+
+      <!-- 注入透视(2026-09-27 新增) -->
+
+      <section id="inj" class="panel">
+        <p class="hint">
+          <b>她这一轮到底读到了什么</b> —— 把注入块逐段拆开,每段标字数,点段展开全文。
+          注入 = 检索命中的情景记忆 + 图谱路径 + 此刻情绪状态 + 时间纪律,<b>不是把整个记忆库塞进去</b>(实测每轮只挑 1~2 条,约 1.3k~2.2k 字符)。
+        </p>
+        <div class="toolbar"><span class="chips" id="inj-chips"></span></div>
+        <div class="note" id="inj-meta">加载中…</div>
+        <div id="inj-body"></div>
+      </section>
+
+      <!-- 体检与记忆 -->
+      <section id="mm" class="panel">
+        <p class="hint">DMAE 三态按半衰期现场计算(Active ≥0.5 / Dormant ≥0.1 / Archived),与引擎同一套数学,零漂移。</p>
+        <div id="mm-dmae"></div>
+        <h3>最近记忆</h3>
+        <div class="toolbar"><input class="search" id="mm-q" type="search" autocomplete="one-time-code" name="naf-mm-q" spellcheck="false" autocapitalize="off" placeholder="搜记忆:摘要 / 层 / 来源 / 状态…"></div>
+        <div class="tblwrap"><table class="dt" id="mm-table"></table></div>
+      </section>
+
+      <!-- 悬置话题 -->
+      <section id="th" class="panel">
+        <p class="hint">「她惦记着、还没结掉」的事。四态与 A 侧同源:等待中(还没到点)/ 到点(该催办了)/ 她提过(算兑现)/ 不定时(只记着,不催)。<b>2026-10-06 起多三档</b>:冷却(过时或提过 ⇒ 不再问,还记着)/ 已了结(说完了)/ 归档(默认折叠,只留档);每行带类别徽标(承诺 / 行程 / 提醒 / 关心 / 话题)。 <span class="badge" id="th-count">…</span></p>
+        <div class="stat-grid" id="th-grid"></div>
+        <div id="th-list"></div>
+      </section>
+
+      <!-- 图谱 -->
+      <section id="gr" class="panel">
+        <div class="toolbar">
+          <a class="btn" href="/echo/graph.html" target="_blank" rel="noreferrer">打开动态图谱 ↗</a>
+          <span class="dim">力导向全页:拖拽定点 · 滚轮缩放 · 悬停聚焦 · 搜索 · 类型过滤 · 实时生长</span>
+        </div>
+        <div class="stat-grid" id="gr-grid"></div>
+        <h3>关系边(速览)</h3>
+        <div id="gr-edges" class="lines small"></div>
+      </section>
+
+      <!-- 日记 -->
+      <section id="di" class="panel">
+        <p class="hint">每晚 22:30 一页,写给自己 —— 空日子也写,「今天他没来」是最动人的一页。</p>
+        <div class="toolbar"><input class="search" id="di-q" type="search" autocomplete="one-time-code" name="naf-di-q" spellcheck="false" autocapitalize="off" placeholder="搜日记:日期 / 正文…"></div>
+        <div id="di-list"></div>
+      </section>
+
+      <!-- 对话回放 -->
+      <section id="cv" class="panel">
+        <div class="toolbar">
+          <input class="search" id="cv-q" type="search" autocomplete="one-time-code" name="naf-cv-q" spellcheck="false" autocapitalize="off" placeholder="搜对话:她说的 / 你说的…">
+          <span class="badge" id="cv-count"></span>
+        </div>
+        <div class="chips" id="cv-chips"></div>
+        <p class="hint">全局滚动 100 轮;只有她在线的会话进日志。</p>
+        <div id="cv-list"></div>
+        <div class="toolbar export">
+          <a class="btn" href="/api/echo/export?format=md" download>复现包 .md</a>
+          <a class="btn" href="/api/echo/export?format=json" download>原始 .json</a>
+          <span class="dim">复现包 = 轮次 + 注入画像/记忆 + 情绪包 + 内部状态 + 向量差分 + 当时的调参(这里导全部会话;按单会话导在设置区的 Echo 面板)</span>
+        </div>
+      </section>
+
+      <!-- 会话范围 -->
+      <section id="sc" class="panel">
+        <p class="hint">电源是总闸,范围是分闸 —— 工作娱乐两不误。会话内发「Echo 上线」/「Echo 下线」切当前会话。</p>
+        <div class="note" id="sc-info">加载中…</div>
+      </section>
+
+      <!-- 调参 -->
+      <section id="cfg" class="panel">
+        <p class="hint">她记得多深、多久清一次、多久做一次体检 —— 都在这里。改完<b>下一轮对话生效</b>;钳位规则在 <code>toggle.js</code> 一处,面板不复制第二份;
+          字段表由 <code>GET /api/echo/settings</code> 发下来(<code>lib/settings-fields.js</code> 是唯一一份)。 <span class="badge" id="cfg-badge">…</span></p>
+        <div class="toolbar"><input class="search" id="cfg-q" type="search" autocomplete="one-time-code" name="naf-cfg-q" spellcheck="false" autocapitalize="off" placeholder="搜设置项:名字 / 说明…(只隐藏,不改值)"></div>
+        <!-- 子代理记忆工具开关(2026-10-01 阶段 2f):**独立容器**,不放进 #cfg-form
+             —— 那一格的输入框数被 tests/web-dashboard.test.js 钉成"正好等于字段表条数",
+             而这个开关刻意不是调参项(它落在 config.json 顶层,与电源/范围同层)。 -->
+        <div id="cfg-mt"></div>
+        <div class="hint" id="cfg-mt-msg"></div>
+        <!-- 自动挖影子边开关(2026-10-01 阶段 4):同样**独立容器**(理由同上,
+             它也不是调参项;端点 /api/echo/graph-gate)。 -->
+        <div id="cfg-gt"></div>
+        <div class="hint" id="cfg-gt-msg"></div>
+        <!-- 记忆架构 v2(2026-10-01 A7c):主题簇 / 证据层 / 影子表 / 失效史 + 一键回退。
+             同样**独立容器**(不进 #cfg-form:那一格的输入框数被 web 测试钉死);
+             端点 /api/echo/graph-arch(引擎 arch.py 聚合一次,面板只显示)。 -->
+        <div id="cfg-arch"></div>
+        <div class="hint" id="cfg-arch-msg"></div>
+        <div id="cfg-form"></div>
+        <div class="hint" id="cfg-msg"></div>
+      </section>
+
+      <!-- ── 配置中心(P2 §6.2):三页各自**运行时自建 DOM**(视图文件在 web/views/)── -->
+      <section id="persona" class="panel"></section>
+      <section id="profile" class="panel"></section>
+      <section id="naming" class="panel"></section>
+      <section id="aliases" class="panel"></section>
+      <section id="tuning" class="panel"></section>
+      <section id="state-lexicon" class="panel"></section>
+      <section id="data-health" class="panel"></section>
+
+    </div>
+
+    <footer>前端由队友接管 —— 本页是活数据参考实现(fetch + SSE 全通),布局自由、改完 install + 刷新即见、不用重启。<br>
+      全部端点见仓库 docs/API.md;分区/导航在 <code>web/app.js</code> 的 <code>PANELS</code> 一张表里,加减一段是改一行。<br>
+      快捷键:<code>1~9</code> 切分区 · <code>/</code> 聚焦检索 · <code>Esc</code> 让出焦点。</footer>
+  </main>
+</div>
+<!-- audit-view.js 必须在 app.js 之前:前者只提供"看法"(纯逻辑,零 DOM),
+     后者只负责画。顺序反了 app.js 里的 V() 会当场报错(不静默降级)。 -->
+<script src="/echo/audit-view.js"></script>
+<!-- 配置中心的页面视图(P2 §3):**必须在 app.js 之前** —— 它们先把自己的
+     EchoViews['<id>'] 挂到 globalThis 上,app.js 再用 PANELS 里的 draw 去取。 -->
+<script src="/echo/views/setup-banner.js"></script>
+<script src="/echo/views/persona.js"></script>
+<script src="/echo/views/profile.js"></script>
+<script src="/echo/views/naming.js"></script>
+<script src="/echo/views/aliases.js"></script>
+<script src="/echo/views/tuning.js"></script>
+<script src="/echo/views/state-lexicon.js"></script>
+<script src="/echo/views/data-health.js"></script>
+<script src="/echo/views/emotion-space.js"></script>
+<script src="/echo/app.js"></script>
+</body>
+</html>

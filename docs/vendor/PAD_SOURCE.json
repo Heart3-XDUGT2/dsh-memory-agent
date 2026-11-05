@@ -1,0 +1,87 @@
+{
+  "at": "2026-11-04T10:05:39.125Z",
+  "status": "received-original-MIT-grant-verified",
+  "sourceArchiveLabel": "received dsh-pad-emotion-main source package",
+  "package": {
+    "name": "dsh-pad-emotion",
+    "version": "0.1.0",
+    "private": true,
+    "license": "MIT"
+  },
+  "copyright": "Copyright (c) 2025 <YOUR NAME>",
+  "copyrightHandling": "Original placeholder preserved byte for byte; no author or commit invented.",
+  "originalCommit": null,
+  "originalPublicRepositoryURL": null,
+  "sourceFiles": [
+    {
+      "path": "LICENSE",
+      "bytes": 1068,
+      "sha256": "7890035ee1010751e34fc6e3f0acb9c4642b860b03352b4b866ac2d237a51929"
+    },
+    {
+      "path": "package.json",
+      "bytes": 1545,
+      "sha256": "42780e40d5b3b0c87141c2b3ad17782b8c5097c1a8b819ddd445bd7ef813d748"
+    },
+    {
+      "path": "client.js",
+      "bytes": 31810,
+      "sha256": "91f23378bd6603d6a3b2c9d3d4e097ca71773a9769be8fd2b4f81d6d18e23dd8"
+    }
+  ],
+  "redistributedLicense": {
+    "path": "LICENSES/dsh-pad-emotion-MIT.txt",
+    "sha256": "7890035ee1010751e34fc6e3f0acb9c4642b860b03352b4b866ac2d237a51929",
+    "originalBytesPreserved": true
+  },
+  "transferredFile": {
+    "path": "web/views/emotion-space.js",
+    "sha256": "19a1d2a2daf3e45f2839d0c17961e20df4f335999e4298645b54de9e3b7efba9"
+  },
+  "pureFunctions": [
+    {
+      "name": "rotate",
+      "upstreamLine": 119,
+      "localLine": 657,
+      "normalizedSha256": "2880c307858d1976aaa1a6e9b39bfe64f39f763a643207efc1e9d70b8122cb9e"
+    },
+    {
+      "name": "project",
+      "upstreamLine": 139,
+      "localLine": 672,
+      "normalizedSha256": "72cbad0b18de19e5882b6390a2edb569701526b96ea29acdea9ab568ca9928f8"
+    },
+    {
+      "name": "world",
+      "upstreamLine": 155,
+      "localLine": 684,
+      "normalizedSha256": "f0d3a22e178188ee867eeb47acf01eeac5ea4d7921d8e84cb4ce2ac54de294d9"
+    }
+  ],
+  "numericComparisons": 243,
+  "drawBlocks": [
+    {
+      "name": "view-and-projection",
+      "identicalAfterFormattingNormalization": true,
+      "normalizedSha256": "8e001992da17f4b2397faf6298f487071cb1b95cfc75832995c1fc634fcb95cc"
+    },
+    {
+      "name": "face-depth-sort",
+      "identicalAfterFormattingNormalization": true,
+      "normalizedSha256": "bbc9426dd4464a8338379e58e1b3d4729ed3c1c64b7c5ebd263fcb2886c2713e"
+    },
+    {
+      "name": "edge-stroke",
+      "identicalAfterFormattingNormalization": true,
+      "normalizedSha256": "1f9a6e51ee281cf0d0f383213479dff584e70b7525e277075b8b1c6f7bb1c9bb"
+    },
+    {
+      "name": "axis-stroke",
+      "identicalAfterFormattingNormalization": true,
+      "normalizedSha256": "b8a653833c6fcf26d7b515ef07c0a9add4c662e2192756b6a56c38f6d1c40ce0"
+    }
+  ],
+  "scope": "Three pure functions and four identified render blocks checked; React/native wrappers and later product additions are adaptations, not claimed byte-identical.",
+  "providedSourceLicensePending": false,
+  "ipcVendoredLicenseReplaced": false
+}
