@@ -32,8 +32,8 @@ test('046 context: equal display names stay distinct; IDs remain internal associ
   const value = env(), before = structuredClone(value), output = buildGroupDialogueContext(value)
   assert.equal((output.text.match(/成员\d+（小周）/gu) ?? []).length, 2)
   assert.match(output.text, /发言1｜成员1：日志我来整理/u)
-  assert.match(output.text, /当前发言：\n- 成员2（群成员发言/u)
-  assert.doesNotMatch(output.text, /person-first|person-second|synthetic-group|prior-id|current-id/)
+  assert.match(output.text, /当前发言（本条原话在这里/u)
+  assert.doesNotMatch(output.text, /person-first|synthetic-group|prior-id|current-id/)
   assert.deepEqual(value, before)
   assert.ok(output.guidanceChars < 300)
   assert.equal(output.chars, output.text.length)
@@ -52,8 +52,19 @@ test('046 context: owner and guest identities are explicit and stable by QQ tail
   const output = renderGroupDialogueContext(value)
   assert.match(output, /成员1（主人昵称，QQ尾号3456）：主人/u)
   assert.match(output, /成员2（群友，QQ尾号7654）：群成员/u)
-  assert.match(output, /当前发言：\n- 成员2（群成员发言/u)
+  assert.match(output, /当前发言（本条原话在这里/u)
+  assert.match(output, /成员2｜群友（QQ号987654；群成员/u)
+  assert.match(output, /这次可归你了。/u)
   assert.match(output, /Echo不是主人/u)
+})
+
+test('046 context: current raw text appears once in the current section and digest URLs stay intact', () => {
+  const url = 'https://example.invalid/image?id=abc_123&download=1'
+  const value = env({ text: '请看这张图', historyDigest: `补档图片 ${url}` })
+  const rendered = renderInboundText(value, { groupDialogueContextEnabled: true })
+  assert.equal(rendered.split('请看这张图').length - 1, 1)
+  assert.equal(rendered.includes(url), true)
+  assert.doesNotMatch(rendered, /\n说:请看这张图/u)
 })
 
 test('046 context: reply relations follow exact verified message references, not guessed names', () => {
@@ -61,7 +72,7 @@ test('046 context: reply relations follow exact verified message references, not
   const value = env({ groupContext: { v: 1, chatId: 'synthetic-group', recent: [first],
     reply: { messageId: first.messageId, resolved: true, senderId: first.senderId,
       senderName: first.senderName, text: first.text } } })
-  assert.match(renderGroupDialogueContext(value), /当前发言：[\s\S]*引用发言1/u)
+  assert.match(renderGroupDialogueContext(value), /当前发言（本条原话在这里[\s\S]*引用发言1/u)
   value.groupContext.reply.senderId = 'not-that-person'
   assert.match(renderGroupDialogueContext(value), /引用作者与原话未确认/u)
 })
@@ -69,10 +80,10 @@ test('046 context: reply relations follow exact verified message references, not
 test('046 context: historical explicit at and current plain-text you never fabricate current addressing', () => {
   const value = env({ text: '@Echo 你看这个', groupContext: { v: 1, chatId: 'synthetic-group',
     recent: [prior({ atMe: true })] } })
-  assert.match(renderGroupDialogueContext(value), /当前发言：[\s\S]*是否单独提到Echo未确认/u)
+  assert.match(renderGroupDialogueContext(value), /当前发言（本条原话在这里[\s\S]*是否单独提到Echo未确认/u)
   assert.match(renderGroupDialogueContext(value), /发言1｜成员1：日志我来整理。/u)
   assert.match(renderGroupDialogueContext({ ...value, atMe: false, atMeKnown: true }),
-    /当前发言：[\s\S]*明确未单独提到Echo/u)
+    /当前发言（本条原话在这里[\s\S]*明确未单独提到Echo/u)
 })
 
 test('046 context: received order and third-person ownership survive interleaved timestamps', () => {
@@ -108,7 +119,7 @@ test('046 context: variant replaces old JSON but preserves wake information outs
   assert.match(after, /额外唤醒资料（未逐条核对/u)
   assert.match(after, /重复的旧背景/u)
   assert.equal(after.split('这次可归你了。').length - 1, 1)
-  assert.match(after, /这句话也许不是对你说的/)
+  assert.match(after, /先保持人物、事务和承诺的归属/u)
   assert.match(after, /群里即使主人提问，也不能披露私聊、其他群的秘密或私人记忆/)
   assert.match(after, /echo_group_participation/)
   assert.match(after, /echo_qq_say，只能回当前群/)
