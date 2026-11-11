@@ -1,3 +1,5 @@
+[![XERJ Corpus Hub contributor](https://hub.xerj.org/contributors/Yotaoer/badge.svg)](https://hub.xerj.org/contributors/Yotaoer)  
+
 # Echo · DSH 的陪伴人格与长期记忆
 
 **项目队友：[Peirar](https://github.com/Peirar) · [Terabinaryte](https://github.com/Terabinaryte)**
