@@ -415,7 +415,104 @@ def validate_pending_threads(raw_items):
 # 第三层:代码级后过滤(不可绕过)
 # ═══════════════════════════════════════════════════════════════════════
 
-def post_filter_candidates(candidates):
+def _owner_names(names=None):
+    """Return the configured owner aliases used for identity safety checks."""
+    if not isinstance(names, dict):
+        return []
+    raw = names.get("ownerNames")
+    if not isinstance(raw, list):
+        return []
+    out = []
+    for value in raw:
+        if not isinstance(value, str):
+            continue
+        value = value.strip()
+        if value and value not in out:
+            out.append(value[:32])
+    return out
+
+
+def _identity_conflict(text, names=None):
+    """Detect summaries that turn the owner alias into a third person.
+
+    The model may use the role slot ``用户`` for the owner, but the configured
+    nickname is also present in the same sentence.  Action phrasing such as
+    ``用户向<owner>道歉`` is therefore a strong self/other contradiction.
+    Identity facts (``用户称呼是<owner>``) remain valid.
+    """
+    t = str(text or "").strip()
+    if not t:
+        return False
+    aliases = [re.escape(x) for x in _owner_names(names)]
+    if not aliases:
+        return False
+    alias = "(?:" + "|".join(aliases) + ")"
+    if re.search(r"^(?:用户|主人)\s*(?:向|对|给|告诉|请|让|问|和|跟)\s*" + alias, t):
+        return True
+    if re.search(r"(?:用户|主人).{0,8}(?:向|对|给|告诉|请|让|问).{0,4}" + alias, t):
+        return True
+    return False
+
+
+def _grounded_degraded_summary(summary, text, keywords):
+    """A fallback summary must be traceable to the current user utterance.
+
+    The degraded path has no candidate-level evidenceQuotes, so accepting a
+    model-written summary on emotion score alone turns generic prose into
+    durable memory.  Require non-empty source text plus either a meaningful
+    keyword hit or a shared two-character CJK span / ASCII token.
+    """
+    summary = " ".join(str(summary or "").split()).strip()
+    source = " ".join(str(text or "").split()).strip()
+    if not summary or not source:
+        return False
+    source_low = source.casefold()
+    for key in (keywords if isinstance(keywords, list) else []):
+        if isinstance(key, str) and len(key.strip()) >= 2 and key.strip().casefold() in source_low:
+            return True
+    cjk = re.findall(r"[\u4e00-\u9fff]{2,}", summary)
+    if any(part in source for part in cjk):
+        return True
+    words = re.findall(r"[A-Za-z0-9_]{3,}", summary.casefold())
+    return any(word in source_low for word in words)
+
+
+_DEGRADED_META_PATTERNS = (
+    re.compile(r"(?:版本(?:号|信息)?|系统状态|运行状态|服务状态|接口状态|模型状态|当前状态)"),
+    re.compile(r"\becho\s*v?\d+(?:\.\d+)*\b", re.IGNORECASE),
+    re.compile(r"(?:系统提示|提示词|代码库|仓库|分支|提交|部署|编译|构建|报错|堆栈|fixture|pytest|npm\s+run)", re.IGNORECASE),
+    re.compile(r"(?:单元|回归|集成)?测试(?:通过|失败|结果|用例)?"),
+    re.compile(r"(?:正在|准备|需要|要)?(?:测试|验证).{0,10}(?:系统|插件|代码|版本|接口|模型|功能)"),
+)
+_DEGRADED_PURE_EMOTION = re.compile(
+    r"^(?:用户|主人)?(?:今天|现在|最近|刚刚)?"
+    r"(?:好累|很累|累了|疲惫|困了|好困|无聊|烦|烦死了|难过|伤心|开心|"
+    r"高兴|焦虑|紧张|生气|不舒服|心情不好|心情不错|压力很大)"
+    r"[。.!！?？,， ]*$"
+)
+_DEGRADED_EPHEMERAL = (
+    re.compile(r"(?:没吃|还没吃|吃了饭|吃过饭|在吃饭|刚刚?做了|刚刚?完成了)"),
+    re.compile(r"(?:今天|现在|此刻|当前|刚刚|刚才|最近).{0,6}(?:很忙|太忙|忙着|忙于|没吃|吃饭|在做|正在做)"),
+    re.compile(r"(?:当前正在|现在正在|此刻正在)(?!.*(?:长期|计划|项目|目标|承诺|准备|打算))"),
+)
+_DEGRADED_LONG_TERM = re.compile(
+    r"(?:长期|一直|喜欢|偏好|习惯|计划|打算|准备|项目|承诺|目标|想要|希望)"
+)
+
+
+def _degraded_summary_allowed(summary):
+    """Keep long-term facts/preferences/plans, reject meta chatter and bare mood."""
+    value = " ".join(str(summary or "").split()).strip()
+    if not value or _DEGRADED_PURE_EMOTION.fullmatch(value):
+        return False
+    if any(pattern.search(value) for pattern in _DEGRADED_META_PATTERNS):
+        return False
+    if any(pattern.search(value) for pattern in _DEGRADED_EPHEMERAL):
+        return bool(_DEGRADED_LONG_TERM.search(value))
+    return True
+
+
+def post_filter_candidates(candidates, names=None):
     """五道门:shouldWrite / L0 双门控 / forbiddenOverclaims / 绝对化术语 /
     **主题自指(工程噪音)**。
 
@@ -445,11 +542,13 @@ def post_filter_candidates(candidates):
             continue
         if is_self_referential(summary) or any(is_self_referential(q) for q in evidence):
             continue
+        if _identity_conflict(summary, names) or any(_identity_conflict(q, names) for q in evidence):
+            continue
         filtered.append(item)
     return filtered
 
 
-def post_filter_triples(triples):
+def post_filter_triples(triples, names=None):
     """六道门,返回 (kept, dropped)。
 
     ③ 归因硬门是血泪教训:正因为缺这道门,幻觉「用户-是->被我哥骂过
@@ -489,6 +588,8 @@ def post_filter_triples(triples):
                 reason = "绝对化术语"
             elif is_self_referential(text):
                 reason = "主题自指(工程噪音)"
+            elif _identity_conflict(text, names):
+                reason = "主体/对象身份冲突"
         if reason:
             dropped.append({
                 "triple": f"{it.get('s')}-{it.get('relation')}->{it.get('t')}",
@@ -499,7 +600,7 @@ def post_filter_triples(triples):
     return kept, dropped
 
 
-def reject_reasons(validated, filtered):
+def reject_reasons(validated, filtered, names=None):
     """给被拦候选补上人能看懂的理由(审计用)。"""
     reasons = []
     kept_ids = {id(c) for c in filtered}
@@ -522,6 +623,8 @@ def reject_reasons(validated, filtered):
             reason = "绝对化术语"
         elif is_self_referential(item.get("summary") or ""):
             reason = "主题自指(工程噪音)"
+        elif _identity_conflict(item.get("summary") or "", names):
+            reason = "主体/对象身份冲突"
         else:
             reason = "后处理过滤"
         reasons.append({
@@ -569,6 +672,119 @@ def memory_key_of(candidate: dict) -> str:
     return str(candidate.get("slot") or candidate.get("field") or "")
 
 
+def prepare_extract(structured, text, *, source_identity, occurred_at_ms,
+                    epoch, generation, names=None, dedupe=None):
+    """Pure Judge normalization for S4d; never opens or writes a database."""
+    from .memory_extract_transactions import EXTRACT_PROTOCOL, normalize_request
+
+    if not isinstance(source_identity, str) or not source_identity.strip():
+        raise ValueError("extract_source_invalid")
+    if not isinstance(epoch, str) or not epoch.strip() \
+            or not isinstance(generation, int) or generation < 1 \
+            or not isinstance(occurred_at_ms, int) or occurred_at_ms < 1:
+        raise ValueError("extract_invalid_input")
+    raw = structured if isinstance(structured, dict) else {}
+    extract = normalize_extract(raw)
+    raw_candidates = raw.get("candidates")
+    raw_candidates = raw_candidates if isinstance(raw_candidates, list) else []
+    validated = [candidate for candidate in
+                 (validate_candidate(item) for item in raw_candidates)
+                 if candidate is not None]
+    filtered = post_filter_candidates(validated, names)
+    rejected = reject_reasons(validated, filtered, names)
+    admitted, quarantined_candidates = [], []
+    for candidate in filtered:
+        confidence = float(candidate.get("confidence") or 0.0)
+        if confidence < CONF_REJECT_BELOW:
+            rejected.append({"layer": candidate.get("layer", "?"),
+                             "summary": (candidate.get("summary") or "")[:40],
+                             "reason": "置信度不足(<%.2f)" % CONF_REJECT_BELOW})
+        elif confidence < CONF_QUARANTINE_BELOW:
+            quarantined_candidates.append(candidate)
+        else:
+            admitted.append(candidate)
+
+    def body_item(candidate, status="active"):
+        keywords = candidate.get("evidenceQuotes") or [candidate.get("triggerText") or ""]
+        layer = candidate.get("layer", "L2")
+        score = max(1, min(10, int(float(candidate.get("confidence", 0.5)) * 10)))
+        intrinsic = dmae.compute_intrinsic_value(
+            layer=str(layer), certainty=str(candidate.get("certainty") or ""),
+            attribution=str(candidate.get("attribution") or ""),
+            stability=str(candidate.get("stability") or ""),
+            emotion=float(extract.get("moodIntensity") or 5),
+            quote_count=len(keywords))
+        value = {"keywords": [str(value) for value in keywords[:6]],
+                 "summary": str(candidate.get("summary") or "")[:120],
+                 "emotionScore": score, "source": "extract",
+                 "sourceLabel": "judge_extract", "actor": "master",
+                 "intrinsicValue": intrinsic,
+                 "occurredAt": parse_abs_time(candidate.get("occurred_at")),
+                 "temporalStatus": str(candidate.get("temporal_status") or ""),
+                 "memoryKey": memory_key_of(candidate), "layer": str(layer or ""),
+                 "augKeys": candidate.get("askKeys") or None,
+                 "memoryType": memory_type_of(candidate),
+                 "memoryStability": memory_stability_of(candidate),
+                 "status": status, "dedupe": dedupe}
+        return value
+
+    body_items = [body_item(candidate) for candidate in admitted]
+    quarantined = [body_item(candidate, "quarantined")
+                   for candidate in quarantined_candidates]
+    degraded = False
+    if not body_items and extract["keywords"] and extract["summary"] \
+            and extract["emotionScore"] >= MIN_EMOTION_SCORE \
+            and _grounded_degraded_summary(extract["summary"], text, extract["keywords"]) \
+            and _degraded_summary_allowed(extract["summary"]) \
+            and not _identity_conflict(extract["summary"], names):
+        body_items.append({
+            "keywords": extract["keywords"], "summary": extract["summary"][:120],
+            "emotionScore": extract["emotionScore"], "source": "extract",
+            "sourceLabel": "judge_extract_degraded", "actor": "master",
+            "layer": "L2", "status": "active", "dedupe": dedupe})
+        degraded = True
+    if len(body_items) + len(quarantined) > 16:
+        raise ValueError("extract_input_budget")
+
+    triples = raw.get("triples")
+    triples = triples if isinstance(triples, list) else []
+    triples_valid = [item for item in (validate_triple(item) for item in triples)
+                     if item is not None]
+    triples_kept, triples_dropped = post_filter_triples(triples_valid, names)
+    pending = raw.get("pendingThreads")
+    pending = pending if isinstance(pending, list) else []
+    threads_kept = validate_pending_threads(pending)
+    payload = {
+        "text": str(text or ""), "sourceIdentity": source_identity,
+        "occurredAtMs": occurred_at_ms, "names": names if isinstance(names, dict) else {},
+        "dedupe": dedupe if isinstance(dedupe, dict) else {},
+        "extract": extract, "bodyItems": body_items, "quarantined": quarantined,
+        "rejected": rejected, "triples": triples_kept,
+        "triplesRejected": triples_dropped, "threads": threads_kept,
+        "degraded": degraded,
+    }
+    request = {"protocol": EXTRACT_PROTOCOL, "epoch": epoch, "generation": generation,
+               "sourceIdentity": source_identity, "createdAtMs": occurred_at_ms,
+               "payload": payload}
+    normalized, request_hash, _ = normalize_request(request)
+    ack = {
+        "extract": extract, "written": [], "quarantined": quarantined,
+        "rejected": rejected, "triplesRejected": triples_dropped,
+        "learned": 0, "graphError": "", "threadsRegistered": 0,
+        "threadsResolved": 0, "name": extract.get("name"),
+        "profileUpdate": extract.get("profileUpdate") or {},
+        "stats": {"written": len(body_items), "bodyMemoryWritten": len(body_items),
+                  "quarantined": len(quarantined),
+                  "degraded": degraded, "triplesRaw": len(triples),
+                  "triplesWritten": len(triples_kept),
+                  "threadsKept": len(threads_kept)},
+        "stageStatuses": {"body": "pending", "graph": "pending",
+                          "threads": "pending", "js_ack": "pending"},
+    }
+    return {"request": normalized, "requestHash": request_hash,
+            "bodyItems": body_items, "ack": ack}
+
+
 # ---------------------------------------------------------------- 数据覆盖(P3-a)
 #: 状态初值覆盖(`state-defaults.json.moodIntensity`)。`None` ⇒ 用 **3**(= 迁移前行为)。
 #: 只有"那个 3"是可配置的初值;钳位上下限 1/10 属形状,留在代码里。
@@ -598,7 +814,7 @@ def _mood_default():
     return 3 if _OVERRIDE_MOOD is None else _OVERRIDE_MOOD
 
 
-def build_extract_prompt(known_entities=None) -> str:
+def build_extract_prompt(known_entities=None, owner_names=None, agent_names=None) -> str:
     """EXTRACT 吸收 Judge 职责后的合并系统提示词(单一事实源)。
 
     情绪载荷规则来自 M1 EXTRACT(已实测的人格纪律),记忆载荷规则
@@ -621,6 +837,20 @@ def build_extract_prompt(known_entities=None) -> str:
             "简称或换个说法(「西电」已经被归一成「西安电子科技大学」)。"
             "只有确实是名单里没有的新实体,才写新名字。",
         ]
+    identity_hint = []
+    owners = [str(x).strip() for x in (owner_names or []) if str(x).strip()][:8]
+    agents = [str(x).strip() for x in (agent_names or []) if str(x).strip()][:8]
+    if owners:
+        identity_hint.append(
+            "身份锚点：用户/主人只有一个，真实称呼是「"
+            + "」「".join(owners)
+            + "」。不要把这个称呼当成第三人或动作目标。"
+        )
+    if agents:
+        identity_hint.append(
+            "机器人名是「" + "」「".join(agents)
+            + "」，不要把她的行为写成用户事实。"
+        )
     return "\n".join([
         # ★ 2026-10-17：整体精简（7655 → ~2900 字符）。
         # 现场：本地 qwen2.5:3b 在 7655 字符的 prompt 上 **0/5 全空**（9 个键都出但四个载荷全空），
@@ -693,6 +923,7 @@ def build_extract_prompt(known_entities=None) -> str:
         "- slot：会变的同一件事填同一个稳定英文槽位名（如 current_project / sleep_schedule / identity_name），否则留空。",
         "",
         *entity_hint,
+        *identity_hint,
         "triples（关系型知识，s-关系-t）：",
         "- s / t 是短名词，relation 是 2~6 字。",
         "- **三个枚举字段各有各的值，不许串：**",
@@ -857,8 +1088,8 @@ def commit(conn, owner, structured, text, *, session_id="", now=None, dedupe=Non
             schema_rejected += 1
 
     # ---- 第三层:代码级后过滤 ----
-    filtered = post_filter_candidates(validated)
-    rejected = reject_reasons(validated, filtered)
+    filtered = post_filter_candidates(validated, names)
+    rejected = reject_reasons(validated, filtered, names)
 
     # ---- 第四层:置信度准入闸(M2-h)----
     # <0.55 拒收 / 0.55~0.75 隔离 / ≥0.75 落库。闸在三层数字防御
@@ -888,7 +1119,7 @@ def commit(conn, owner, structured, text, *, session_id="", now=None, dedupe=Non
             triples_valid.append(it)
         else:
             triples_schema_rejected += 1
-    triples_kept, triples_dropped = post_filter_triples(triples_valid)
+    triples_kept, triples_dropped = post_filter_triples(triples_valid, names)
 
     raw_threads = raw.get("pendingThreads")
     raw_threads = raw_threads if isinstance(raw_threads, list) else []
@@ -993,7 +1224,12 @@ def commit(conn, owner, structured, text, *, session_id="", now=None, dedupe=Non
     degraded = False
     if not written:
         if extract["keywords"] and extract["summary"] \
-                and extract["emotionScore"] >= MIN_EMOTION_SCORE:
+                and extract["emotionScore"] >= MIN_EMOTION_SCORE \
+                and _grounded_degraded_summary(
+                    extract["summary"], text, extract["keywords"]
+                ) \
+                and _degraded_summary_allowed(extract["summary"]) \
+                and not _identity_conflict(extract["summary"], names):
             mid = episodic.insert_memory(
                 conn, owner,
                 json.dumps(extract["keywords"], ensure_ascii=False),
@@ -1121,12 +1357,13 @@ def commit(conn, owner, structured, text, *, session_id="", now=None, dedupe=Non
         "schemaValid": len(validated),
         "schemaRejected": schema_rejected,
         "written": len(written),
+        "bodyMemoryWritten": len(written),
         "quarantined": len(quarantined),
         "rejected": len(rejected),
         "degraded": degraded,
         "triplesRaw": len(raw_triples),
         "triplesSchemaRejected": triples_schema_rejected,
-        "triplesWritten": len(triples_kept),
+        "triplesWritten": learned if triples_kept else 0,
         "triplesRejected": len(triples_dropped),
         "graphError": graph_error,
         "threadsRaw": len(raw_threads),

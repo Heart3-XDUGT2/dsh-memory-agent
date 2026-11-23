@@ -8,6 +8,7 @@ Echo 自身采用根目录 [MIT License](LICENSE)。下表只陈述这个仓库�
 |---|---|---|
 | `lib/ipc-core/` | `dsh-interpersonal-circumplex` 的纯逻辑核心；仓内记录复制于2026-10-05，未记录可核的上游版本号或commit，故不补造版本 | MIT，Copyright (c) 2025 peirar；原许可在 [`lib/ipc-core/LICENSE`](lib/ipc-core/LICENSE)，来源说明在同目录 [`README.md`](lib/ipc-core/README.md) |
 | `web/vendor/d3.v7.min.js` | D3 **7.9.0**；文件与 npm `d3@7.9.0` 的 `dist/d3.min.js` 逐字节一致 | ISC，Copyright 2010-2023 Mike Bostock；文件头版权和 [`web/vendor/LICENSE.d3.txt`](web/vendor/LICENSE.d3.txt) 原文均保留 |
+| 独立 3D 记忆星图 | 参考站点和来源摘要见 [`NOTICE.txt`](web/mock/final/vendor/jiulin/NOTICE.txt)；前端图数据适配属于 Echo | 保留项目提供的 MIT 声明，以及匹配的 Three.js r128 和 OrbitControls [许可证](web/mock/final/vendor/jiulin/THREE-LICENSE.txt) |
 
 D3 上游：[d3/d3](https://github.com/d3/d3)，本次核对发行物：[d3-7.9.0.tgz](https://registry.npmjs.org/d3/-/d3-7.9.0.tgz)。旧图谱页优先加载仓内 D3，只有本地脚本未能建立 `window.d3` 时才尝试 `https://d3js.org/d3.v7.min.js`；这一后备网络请求也属于 [隐私说明](PRIVACY.md) 的边界。
 
@@ -63,8 +64,4 @@ IPC 项目现有原文许可是 `lib/ipc-core/LICENSE` 中的 MIT，Copyright (c
 
 历史评审提到的 NRC-VAD 词表限制也应与实际分发范围分开：当前 `lib/`、`web/`、`python/` 扫描没有发现 NRC-VAD 引用或该51条PAD词表副本；渲染来源注释列的是数学与绘制。本次不据旧评审推定本仓已经分发了整份词库。
 
-## 仅开发测试使用的上游夹具
-
-`tests/fixtures/host-web-app/` 保存 `@deepseek-ai/dsh-web-app` **0.2.0-rc.2** 的三个上游原文件：`package.json`、`presets/standard.patch.yml`、`LICENSE`；另有本地 `SOURCE.json` 记录来源、发行物 integrity 与各文件 SHA256。原许可为 **MIT，Copyright (c) 2026 DeepSeek**，原文完整保留在该夹具目录。
-
-来源：[npm 精确发行物](https://registry.npmjs.org/@deepseek-ai/dsh-web-app/-/dsh-web-app-0.2.0-rc.2.tgz)。它是公开宿主发行物中的真实 preset 测试数据，不是宿主实现的替身，也不是插件运行依赖；整个 `tests/` 目录不进入 npm 运行包。源码仓库继续保留夹具许可证，不因测试文件不打包而删去它。
+星图随包附带生成好的浏览器脚本。只有重新生成脚本时才需自备 `esbuild`；运行页面不依赖它。

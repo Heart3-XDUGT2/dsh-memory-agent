@@ -36,8 +36,10 @@ L0 管理(b3 的主题):
 """
 
 import json
+import hashlib
 import math
 import re
+import sqlite3
 import time
 
 from . import cancel
@@ -46,9 +48,39 @@ from . import lexical
 from . import fusion as fusion_mod  # RT10:三臂 RRF(默认不生效)
 from . import synonyms as synonyms_mod  # RT11:零依赖语义臂(默认不生效)
 from . import timeintent  # 时间臂(默认不生效)
+from .graph import DEFAULT_MEMORY_TIME_ZONE, _fmt_day, _time_note as _graph_time_note
+from .memory_snapshot_export import (
+    SnapshotExportError, close_snapshot_export, open_snapshot_export,
+    read_bounded_rows, receipt_summary,
+)
 
 L0_ALWAYS_ON_LIMIT = 8
 CANDIDATE_LIMIT = 500
+
+
+def _candidate_metadata(rows):
+    """Return bounded opaque metadata for one already-read candidate pool."""
+    if not isinstance(rows, list) or len(rows) > CANDIDATE_LIMIT:
+        return {
+            "status": "unknown", "candidateCount": None,
+            "candidateDigest": None, "candidateDigestStatus": "not_exposed",
+            "reason": "candidate_pool_unavailable",
+        }
+    ids = [row.get("memory_id") for row in rows
+           if isinstance(row, dict) and isinstance(row.get("memory_id"), int)
+           and row.get("memory_id") > 0]
+    if len(ids) != len(rows) or len(set(ids)) != len(ids):
+        return {
+            "status": "unknown", "candidateCount": None,
+            "candidateDigest": None, "candidateDigestStatus": "not_exposed",
+            "reason": "candidate_pool_invalid",
+        }
+    payload = json.dumps(ids, ensure_ascii=True, separators=(",", ":")).encode("utf-8")
+    return {
+        "status": "observed", "candidateCount": len(ids),
+        "candidateDigest": hashlib.sha256(payload).hexdigest(),
+        "candidateDigestStatus": "observed",
+    }
 
 # ---------------------------------------------------------------- 生产注入路径的默认
 # 2026-09-30 他批准的三项(实测见 `docs/RETRIEVAL_OPT_2026-09-30.md`):
@@ -518,9 +550,10 @@ def rank_memories(rows, query, top_k, now, *, dedupe=True, fusion=None, synonyms
     return kept
 
 
-def retrieve(conn, user_id, query, top_k, now=None, *, reinforce=True,
-             dedupe=True, time_arm=False, time_mode="boost", fusion=None,
-             core_block=False, extra_terms=None, expand_score=False, aug_keys=False):
+def _retrieve_impl(conn, user_id, query, top_k, now=None, *, reinforce=True,
+                   dedupe=True, time_arm=False, time_mode="boost", fusion=None,
+                   core_block=False, extra_terms=None, expand_score=False, aug_keys=False,
+                   _owns_transaction=True, _defer_strength=False, _return_candidate_meta=False):
     """检索 top_k:读库 → 排名 → 被想起来就强化(写回)。
 
     返回 (items, reinforced)。候选池 = 该用户最近 CANDIDATE_LIMIT 条
@@ -535,6 +568,11 @@ def retrieve(conn, user_id, query, top_k, now=None, *, reinforce=True,
     拒收一起退役 —— 只服务他一个人,所有记忆对所有轮次可见,没有
     「往哪儿渗」的问题。)
     """
+    if _defer_strength and _owns_transaction:
+        raise ValueError("deferred strength requires caller-owned transaction")
+    if not _owns_transaction and not conn.in_transaction:
+        raise sqlite3.ProgrammingError("caller_transaction_required")
+
     now = float(now) if now else time.time()
     rows = []
     for r in conn.execute(
@@ -563,14 +601,15 @@ def retrieve(conn, user_id, query, top_k, now=None, *, reinforce=True,
             "learned_at": float(r[14] or 0.0),
             "temporal_status": str(r[15] or "time_unknown"),
         })
+    candidate_metadata = _candidate_metadata(rows)
     top = rank_memories(rows, query, top_k, now, dedupe=dedupe, time_arm=time_arm,
                         time_mode=time_mode, fusion=fusion, core_block=core_block,
                         extra_terms=extra_terms, expand_score=expand_score,
                         aug_keys=aug_keys)
     if not top:
-        return [], 0
+        return ([], 0, [], candidate_metadata) if _return_candidate_meta else ([], 0, [])
     if not reinforce:
-        return top, 0
+        return (top, 0, [], candidate_metadata) if _return_candidate_meta else (top, 0, [])
 
     # ---- 被想起来就强化(纯靠强制占位进来的除外,见 F5)----
     # 2026-09-27 F5:强制占位的 L0 **不再**写回强化 —— 与图侧 `pinned` 对称。
@@ -586,6 +625,10 @@ def retrieve(conn, user_id, query, top_k, now=None, *, reinforce=True,
     #
     # RT4 追加:去冗余之后,**同一事实不再有多条同时被强化**(旧行为是
     # 5 条换说法的记忆各自 recall_count+1)。回写条数变少是修好,不是副作用。
+    strength_candidates = [int(it["memory_id"]) for it in top if not it.get("forced")]
+    if _defer_strength:
+        return (top, 0, strength_candidates, candidate_metadata) if _return_candidate_meta else (top, 0, strength_candidates)
+
     reinforced = 0
     skipped = 0
     for it in top:
@@ -602,10 +645,143 @@ def retrieve(conn, user_id, query, top_k, now=None, *, reinforce=True,
         )
         reinforced += 1
     conn.commit()
-    return top, reinforced
+    return (top, reinforced, strength_candidates, candidate_metadata) if _return_candidate_meta else (top, reinforced, strength_candidates)
 
 
-def render_episodic(memories):
+def retrieve(conn, user_id, query, top_k, now=None, *, reinforce=True,
+             dedupe=True, time_arm=False, time_mode="boost", fusion=None,
+             core_block=False, extra_terms=None, expand_score=False, aug_keys=False):
+    """Legacy public retrieve; preserves immediate reinforcement and commit behavior."""
+    items, reinforced, _ = _retrieve_impl(
+        conn, user_id, query, top_k, now=now, reinforce=reinforce, dedupe=dedupe,
+        time_arm=time_arm, time_mode=time_mode, fusion=fusion, core_block=core_block,
+        extra_terms=extra_terms, expand_score=expand_score, aug_keys=aug_keys,
+        _owns_transaction=True, _defer_strength=False,
+    )
+    return items, reinforced
+
+
+def retrieve_with_metadata(conn, user_id, query, top_k, now=None, *, reinforce=True,
+                           dedupe=True, time_arm=False, time_mode="boost", fusion=None,
+                           core_block=False, extra_terms=None, expand_score=False, aug_keys=False):
+    """Formal retrieval plus opaque candidate-pool metadata from the same read/rank pass."""
+    items, reinforced, _, candidate_metadata = _retrieve_impl(
+        conn, user_id, query, top_k, now=now, reinforce=reinforce, dedupe=dedupe,
+        time_arm=time_arm, time_mode=time_mode, fusion=fusion, core_block=core_block,
+        extra_terms=extra_terms, expand_score=expand_score, aug_keys=aug_keys,
+        _owns_transaction=True, _defer_strength=False, _return_candidate_meta=True,
+    )
+    return items, reinforced, candidate_metadata
+
+
+def _snapshot_formal_rows(raw_rows, user_id):
+    if not isinstance(raw_rows, dict) or not isinstance(raw_rows.get("episodic_memory"), list):
+        raise ValueError("snapshot_scope_missing")
+    rows = []
+    for row in raw_rows["episodic_memory"]:
+        if not isinstance(row, dict) or row.get("user_id") != user_id:
+            continue
+        memory_id = row.get("memory_id")
+        if type(memory_id) is not int or memory_id < 1:
+            raise ValueError("snapshot_memory_invalid")
+        rows.append({
+            "memory_id": memory_id,
+            "keywords": parse_keywords(row.get("keywords")),
+            "summary": str(row.get("summary") or ""),
+            "emotion_score": row.get("emotion_score"),
+            "timestamp": float(row.get("timestamp") or 0.0),
+            "source": str(row.get("source") or "private"),
+            "source_label": str(row.get("source_label") or ""),
+            "actor": str(row.get("actor") or ""),
+            "intrinsic_value": float(row.get("intrinsic_value") or 0.0),
+            "half_life": float(row.get("half_life") or 0.0),
+            "recall_count": int(row.get("recall_count") or 0),
+            "last_recalled": float(row.get("last_recalled") or 0.0),
+            "layer": str(row.get("layer") or ""),
+            "occurred_at": float(row.get("occurred_at") or 0.0),
+            "learned_at": float(row.get("learned_at") or 0.0),
+            "temporal_status": str(row.get("temporal_status") or "time_unknown"),
+        })
+    rows.sort(key=lambda row: row["timestamp"], reverse=True)
+    return rows[:CANDIDATE_LIMIT]
+
+
+def retrieve_from_snapshot(path, receipt, user_id, query, top_k, now=None, *,
+                           dedupe=True, time_arm=False, time_mode="boost",
+                           fusion=None, core_block=False, extra_terms=None,
+                           expand_score=False, aug_keys=False):
+    """Read/rank a verified immutable export without reinforcement or writes."""
+    handle = None
+    try:
+        if (type(user_id) is not str or not user_id
+                or type(query) is not str or not query.strip()
+                or type(top_k) is not int or top_k < 1 or top_k > 12):
+            return {"status": "no-go", "reason": "snapshot_invalid_input",
+                    "items": [], "reinforced": 0, "candidateMeta": None,
+                    "readOnlySnapshot": True}
+        handle = open_snapshot_export(path, receipt)
+        if hashlib.sha256(user_id.encode("utf-8")).hexdigest() != handle["receipt"]["ownerHash"]:
+            return {"status": "no-go", "reason": "snapshot_owner_scope_mismatch",
+                    "items": [], "reinforced": 0, "candidateMeta": None,
+                    "readOnlySnapshot": True, "receipt": receipt_summary(handle)}
+        rows = _snapshot_formal_rows(read_bounded_rows(handle), user_id)
+        candidate_metadata = _candidate_metadata(rows)
+        if candidate_metadata["status"] != "observed":
+            return {"status": "no-go", "reason": "snapshot_candidate_unavailable",
+                    "items": [], "reinforced": 0, "candidateMeta": candidate_metadata,
+                    "readOnlySnapshot": True, "receipt": receipt_summary(handle)}
+        ranked = rank_memories(
+            rows, query, top_k, float(now) if now is not None else time.time(),
+            dedupe=dedupe, time_arm=time_arm, time_mode=time_mode, fusion=fusion,
+            core_block=core_block, extra_terms=extra_terms,
+            expand_score=expand_score, aug_keys=aug_keys)
+        return {
+            "status": "ok", "reason": "snapshot_read_only", "items": ranked,
+            "reinforced": 0, "candidateMeta": candidate_metadata,
+            "readOnlySnapshot": True, "receipt": receipt_summary(handle),
+        }
+    except SnapshotExportError as error:
+        return {"status": "no-go", "reason": str(error), "items": [],
+                "reinforced": 0, "candidateMeta": None, "readOnlySnapshot": True}
+    except (TypeError, ValueError, KeyError, OverflowError):
+        return {"status": "no-go", "reason": "snapshot_read_failed", "items": [],
+                "reinforced": 0, "candidateMeta": None, "readOnlySnapshot": True}
+    finally:
+        if handle is not None:
+            close_snapshot_export(handle)
+
+
+def retrieve_caller_owned(conn, user_id, query, top_k, now=None, *, reinforce=True,
+                           dedupe=True, time_arm=False, time_mode="boost", fusion=None,
+                           core_block=False, extra_terms=None, expand_score=False, aug_keys=False):
+    """Rank inside the caller's transaction without writing legacy strength.
+
+    Returns ``(items, strength_candidates)``. A trusted coordinator may apply
+    the returned Memory IDs through the S1 event API in this same transaction.
+    ``reinforce=False`` returns no strength candidates, matching the public API.
+    """
+    if not conn.in_transaction:
+        raise sqlite3.ProgrammingError("caller_transaction_required")
+    items, _, strength_candidates = _retrieve_impl(
+        conn, user_id, query, top_k, now=now, reinforce=reinforce, dedupe=dedupe,
+        time_arm=time_arm, time_mode=time_mode, fusion=fusion, core_block=core_block,
+        extra_terms=extra_terms, expand_score=expand_score, aug_keys=aug_keys,
+        _owns_transaction=False, _defer_strength=True,
+    )
+    return items, strength_candidates
+
+
+def _time_note(occurred_at, learned_at, temporal_status,
+               timezone=DEFAULT_MEMORY_TIME_ZONE, *, recorded_at=0.0):
+    """Keep graph time semantics and add the recorded-time fallback locally."""
+    if not float(occurred_at or 0.0) and not float(learned_at or 0.0):
+        recorded = _fmt_day(recorded_at, timezone)
+        if recorded:
+            return f"（记录于 {recorded}，事情发生时间未确认）"
+    return _graph_time_note(occurred_at, learned_at, temporal_status, timezone)
+
+
+def render_episodic(memories, timezone=DEFAULT_MEMORY_TIME_ZONE):
     """情景渲染:年龄标签 + 情感分 + 时间注记,L0 加 [核心]。
 
     brain_pipeline.py:762-780 逐字移植(行首 '- ',不编号 —— 编号是
@@ -651,11 +827,12 @@ def render_episodic(memories):
         age = m.get("age_days", 0)
         age_tag = "今天" if age < 1 else f"{int(age)}天前"
         core = "[核心] " if str(m.get("layer") or "") == "L0" else ""
-        from .graph import _time_note
         note = _time_note(
             m.get("occurred_at", 0.0),
             m.get("learned_at", 0.0),
             m.get("temporal_status", ""),
+            timezone,
+            recorded_at=m.get("recorded_at", m.get("timestamp", 0.0)),
         )
         # 有命中时逐条标"这条不是本轮相关"(块级横幅已覆盖"全都没命中"那种)
         mark = ""

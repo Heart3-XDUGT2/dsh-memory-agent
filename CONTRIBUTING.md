@@ -3,14 +3,10 @@
 先读README、PRIVACY、SECURITY和`docs/TESTING.md`。使用Node24、Python3.14、全新临时目录与合成数据，不把自己的`.dsh`、junction或聊天当作测试前提。
 
 ```powershell
-npm ci --ignore-scripts
-npm run dev:bootstrap
-npm run test:unit
-npm run test:py
 npm run release:check
 ```
 
-集成需同父目录的`dsh-qq-bridge`，再执行`npm run test:all`。完整CI包含跨仓测试；单元结果不能冒充集成通过。不得在测试中配置真实模型或QQ账号。
+发布树不分发开发测试套件。静态检查不代表宿主或跨仓集成已通过；独立验证仅使用临时环境、合成数据和假适配器，不配置真实模型或 QQ 账号。
 
 新增依赖固定版本并更新shrinkwrap，注明用途和许可。检查包内容与引用。UI变更附合成数据下的1440/768/390截图；仅文档、测试、发布工程不必重设计UI。
 

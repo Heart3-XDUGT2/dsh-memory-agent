@@ -124,7 +124,7 @@ def _norm_content(content):
 
 def remember_pending_thread(conn, user_id, content, follow_up_after=0.0,
                             source_memory_id=0, session_id="", due_window_sec=0.0,
-                            kind=""):
+                            kind="", _owns_transaction=True):
     """登记一条悬置话题(带去重)。返回 (thread_id, created)。
 
     空内容返回 (0, False);命中既有话题返回 (既有id, False) 并补
@@ -191,7 +191,8 @@ def remember_pending_thread(conn, user_id, content, follow_up_after=0.0,
                 " updated_at = ? WHERE thread_id = ?",
                 (sess, sess, due, due, src_mid, src_mid, kind_final, kind_final, now, int(row[0])),
             )
-            conn.commit()
+            if _owns_transaction:
+                conn.commit()
             return int(row[0]), False
     cur = conn.execute(
         "INSERT INTO pending_threads (user_id, content, status,"
@@ -199,7 +200,8 @@ def remember_pending_thread(conn, user_id, content, follow_up_after=0.0,
         " created_at, updated_at, kind) VALUES (?, ?, 'open', ?, ?, ?, 0, ?, ?, ?)",
         (user_id, normalized, due, src_mid, sess, now, now, kind_final),
     )
-    conn.commit()
+    if _owns_transaction:
+        conn.commit()
     return int(cur.lastrowid or 0), True
 
 
@@ -552,5 +554,36 @@ def resolve_pending_thread(conn, user_id, query):
                 (now, int(row[0])),
             )
             conn.commit()
+            return int(row[0])
+    return None
+
+
+def remember_pending_thread_caller_owned(conn, user_id, content, follow_up_after=0.0,
+                                         source_memory_id=0, session_id="",
+                                         due_window_sec=0.0, kind=""):
+    if not conn.in_transaction:
+        raise sqlite3.ProgrammingError("caller_transaction_required")
+    return remember_pending_thread(
+        conn, user_id, content, follow_up_after, source_memory_id, session_id,
+        due_window_sec, kind, _owns_transaction=False)
+
+
+def resolve_pending_thread_caller_owned(conn, user_id, query):
+    if not conn.in_transaction:
+        raise sqlite3.ProgrammingError("caller_transaction_required")
+    normalized = " ".join(str(query or "").split()).strip().casefold()
+    if not normalized:
+        return None
+    rows = conn.execute(
+        "SELECT thread_id, content FROM pending_threads"
+        " WHERE user_id = ? AND status = 'open'"
+        " ORDER BY updated_at DESC LIMIT 30", (user_id,)).fetchall()
+    now = time.time()
+    for row in rows:
+        content = str(row[1] or "").casefold()
+        if normalized in content or content in normalized:
+            conn.execute(
+                "UPDATE pending_threads SET status='resolved', follow_up_after=0, updated_at=?"
+                " WHERE thread_id=?", (now, int(row[0])))
             return int(row[0])
     return None

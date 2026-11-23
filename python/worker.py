@@ -54,6 +54,7 @@ from pathlib import Path
 from engine import agenda
 from engine import cancel
 from engine import dmae
+from engine import db as dbmod
 from engine import embed
 from engine import episodic
 from engine import graph
@@ -62,6 +63,13 @@ from engine import graph_mine
 from engine import judge
 from engine import l0_tier
 from engine import longing
+from engine import memory_authority as authority
+from engine import memory_body_transactions as body_transactions
+from engine import memory_extract_transactions as extract_transactions
+from engine import memory_retrieval_transactions as retrieval_transactions
+from engine.memory_snapshot_registry import SnapshotHandleRegistry, SnapshotRegistryError
+from engine.memory_snapshot_export import receipt_summary
+from engine.retrieve import retrieve_from_snapshot
 from engine import reflection
 from engine import relations
 from engine import retrieve
@@ -108,6 +116,473 @@ def error_frame(req_id, message, fatal=False):
     return {"reqId": req_id, "type": "error", "error": message, "fatal": fatal}
 
 
+def _authority(state, conn=None):
+    if conn is None:
+        try:
+            if (state.get("a1_boot") is None
+                    and (not state.get("db_path") or (
+                        state["db_path"] != ":memory:" and not Path(state["db_path"]).exists()))):
+                return authority.status("legacy")
+            conn = dbmod.connect_raw(state["db_path"], read_only=True)
+            try:
+                current = authority.inspect_memory_authority(conn)
+            finally:
+                conn.close()
+        except Exception:
+            current = authority.status("blocked", reason="a1_authority_unavailable")
+    else:
+        current = authority.inspect_memory_authority(conn)
+    boot = state.get("a1_boot")
+    if current["status"] == "blocked":
+        raise authority.AuthorityError(current["reason"])
+    if boot is not None and current != boot:
+        raise authority.AuthorityError("a1_authority_changed")
+    return current
+
+
+def _binding(current):
+    return {key: current[key] for key in ("protocol", "epoch", "generation")}
+
+
+def _active_binding(frame, current):
+    if current["status"] != "active":
+        raise authority.AuthorityError("a1_not_active")
+    if not authority.binding_matches(frame.get("a1"), current):
+        raise authority.AuthorityError("a1_binding_mismatch")
+    if frame.get("userId") != "master":
+        raise authority.AuthorityError("a1_invalid_input")
+    if "memory_add" not in current["entries"]:
+        raise authority.AuthorityError("a1_entry_not_integrated")
+
+
+def _retrieval_gate(frame, current, kind):
+    if current["status"] != "active":
+        raise authority.AuthorityError("a1_not_active")
+    if not authority.binding_matches(frame.get("a1"), current):
+        raise authority.AuthorityError("a1_binding_mismatch")
+    entry = {"auto_context": "memory_retrieve", "search": "memory_search"}.get(kind)
+    if entry is None:
+        raise authority.AuthorityError("a1_invalid_input")
+    if entry not in current["entries"]:
+        raise authority.AuthorityError("a1_entry_not_integrated")
+
+
+def _retrieval_origin(origin, kind, current):
+    fields = ("kind", "sourceIdentity", "occurredAtMs")
+    if kind == "auto_context":
+        fields = (*fields, "admissionIdentity")
+    retrieval_transactions.exact(origin, fields)
+    if (origin["kind"] != kind or not authority.integer(origin["occurredAtMs"], 1)
+            or origin["occurredAtMs"] < current["cutoffAtMs"]):
+        raise authority.AuthorityError("a1_invalid_origin")
+    retrieval_transactions.identity(origin["sourceIdentity"])
+    if kind == "auto_context":
+        retrieval_transactions.identity(origin["admissionIdentity"])
+
+
+def _extract_gate(frame, current):
+    if current["status"] != "active":
+        raise authority.AuthorityError("a1_not_active")
+    if tuple(current["entries"]) != tuple(extract_transactions.REQUIRED_ENTRIES):
+        raise authority.AuthorityError("a1_entry_not_integrated")
+    if not authority.binding_matches(frame.get("a1"), current):
+        raise authority.AuthorityError("a1_binding_mismatch")
+
+
+def _extract_prompt(frame, state, current):
+    _extract_gate(frame, current)
+    version = extract_transactions.validate_extract_origin(frame.get("origin"))
+    if version["occurredAtMs"] < current["cutoffAtMs"]:
+        raise authority.AuthorityError("a1_origin_before_cutoff")
+    origins = state.setdefault("extract_origins", {})
+    existing = origins.get(version["sourceIdentity"])
+    if existing is not None and existing != version:
+        raise extract_transactions.ExtractError("extract_host_version_conflict")
+    if existing is None and len(origins) >= 64:
+        origins.pop(next(iter(origins)))
+    origins[version["sourceIdentity"]] = version
+
+    known = frame.get("knownEntities")
+    names = frame.get("names")
+    names = names if isinstance(names, dict) else {}
+    return {"type": "extract_prompt_result",
+            "prompt": judge.build_extract_prompt(
+                known_entities=known if isinstance(known, list) else None,
+                owner_names=names.get("ownerNames"),
+                agent_names=names.get("speakers")),
+            "schema": judge.build_extract_schema()}
+
+
+def _extract_prepare(frame, state, current):
+    _extract_gate(frame, current)
+    origin = frame.get("origin")
+    if not isinstance(origin, dict) or origin.get("sourceKind") != "extract":
+        raise authority.AuthorityError("a1_invalid_origin")
+    source, occurred, structured = origin.get("sourceIdentity"), origin.get("occurredAtMs"), frame.get("structured")
+    if not isinstance(source, str) or not authority.integer(occurred, 1) or not isinstance(structured, dict):
+        raise authority.AuthorityError("a1_invalid_input")
+    host_version = state.get("extract_origins", {}).get(source)
+    if host_version is None or host_version["occurredAtMs"] != occurred:
+        raise authority.AuthorityError("a1_invalid_origin")
+    prepared = judge.prepare_extract(
+        structured, frame.get("text", ""), source_identity=source,
+        occurred_at_ms=occurred, epoch=current["epoch"],
+        generation=current["generation"], names=frame.get("names"),
+        dedupe=frame.get("dedupe"))
+    prepared["ack"]["hostVersion"] = host_version
+    state.setdefault("extract_prepared", {})[prepared["requestHash"]] = prepared
+    return {"type": "memory_extract_prepare_result",
+            "requestHash": prepared["requestHash"],
+            "payloadHash": extract_transactions.sha(
+                extract_transactions.compact(prepared["request"]["payload"])),
+            "a1": _binding(current)}
+
+
+def _extract_commit(frame, state, current):
+    _extract_gate(frame, current)
+    request_hash = frame.get("requestHash")
+    prepared = state.get("extract_prepared", {}).get(request_hash)
+    if not isinstance(request_hash, str) or prepared is None:
+        if not state.get("db_path"):
+            raise authority.AuthorityError("a1_prepare_missing")
+        conn = dbmod.connect_raw(state["db_path"], read_only=True)
+        try:
+            row = conn.execute(
+                "SELECT status,ack_json,stale_skipped FROM memory_extract_ack_receipts "
+                "WHERE request_hash=?", (request_hash,)).fetchone()
+        finally:
+            conn.close()
+        if row:
+            persisted_status, persisted_ack, stale_skipped = row
+            if stale_skipped == 1:
+                return {"type": "memory_extract_commit_result",
+                        "requestHash": request_hash, "status": "duplicate",
+                        "staleSkipped": True, "a1": _binding(current)}
+            persisted_ack = json.loads(persisted_ack)
+            version = persisted_ack.get("hostVersion")
+            if version is None:
+                return {"type": "memory_extract_commit_result",
+                        "requestHash": request_hash,
+                        "status": "duplicate" if persisted_status == "committed" else persisted_status,
+                        "ack": persisted_ack, "a1": _binding(current)}
+            stale = False
+            conn = dbmod.connect_raw(state["db_path"])
+            try:
+                conn.execute("PRAGMA busy_timeout=0")
+                conn.execute("BEGIN IMMEDIATE")
+                latest = _authority(state, conn)
+                _extract_gate(frame, latest)
+                version_state = extract_transactions.compare_extract_host_version(
+                    conn, version, request_hash)
+                if version_state["status"] == "stale":
+                    extract_transactions.mark_extract_stale_skipped(
+                        conn, request_hash, applied_at_ms=int(time.time() * 1000))
+                    stale = True
+                elif version_state["status"] == "replay":
+                    raise extract_transactions.ExtractError("extract_host_version_conflict")
+                conn.execute("COMMIT")
+            except Exception:
+                if conn.in_transaction:
+                    conn.execute("ROLLBACK")
+                raise
+            finally:
+                conn.close()
+            if stale:
+                return {"type": "memory_extract_commit_result",
+                        "requestHash": request_hash, "status": "stale_skipped",
+                        "staleSkipped": True, "a1": _binding(current)}
+            if persisted_status != "committed":
+                return {"type": "memory_extract_commit_result",
+                        "requestHash": request_hash, "status": persisted_status,
+                        "ack": persisted_ack, "a1": _binding(current)}
+            return {"type": "memory_extract_commit_result",
+                    "requestHash": request_hash, "status": "duplicate",
+                    "ack": persisted_ack, "a1": _binding(current)}
+        raise authority.AuthorityError("a1_prepare_missing")
+    conn = dbmod.connect_raw(state["db_path"])
+    stale_skipped = False
+    already_stale_skipped = False
+    try:
+        conn.execute("PRAGMA busy_timeout=0")
+        conn.execute("BEGIN IMMEDIATE")
+        try:
+            latest = _authority(state, conn)
+            _extract_gate(frame, latest)
+            binding = extract_transactions.begin_extract_request(
+                conn, prepared["request"], authorityOf=lambda db: _authority(state, db),
+                requiredEntries=extract_transactions.REQUIRED_ENTRIES, active=True)
+            host_version = prepared["ack"].get("hostVersion")
+            if host_version is None:
+                raise extract_transactions.ExtractError("extract_host_version_invalid")
+            if binding["status"] == "duplicate":
+                prior = conn.execute(
+                    "SELECT status,ack_json,stale_skipped FROM memory_extract_ack_receipts "
+                    "WHERE request_hash=?", (request_hash,)).fetchone()
+                if prior and prior[2] == 1:
+                    already_stale_skipped = True
+                    result = {"status": "duplicate", "requestHash": request_hash,
+                              "ack": json.loads(prior[1])}
+                elif prior and prior[0] == "committed":
+                    result = {"status": "duplicate", "requestHash": request_hash,
+                              "ack": json.loads(prior[1])}
+                else:
+                    result = None
+            else:
+                result = None
+            if result is None:
+                version_state = extract_transactions.compare_extract_host_version(
+                    conn, host_version, request_hash)
+                if version_state["status"] == "replay":
+                    raise extract_transactions.ExtractError("extract_host_version_conflict")
+                if version_state["status"] == "stale":
+                    extract_transactions.mark_extract_stale_skipped(
+                        conn, request_hash, prepared["ack"],
+                        applied_at_ms=int(time.time() * 1000))
+                    stale_skipped = True
+                    result = {"status": "stale_skipped", "requestHash": request_hash}
+            if result is None:
+                result = extract_transactions.apply_prepared_extract_body(
+                    conn, prepared, authorityOf=lambda db: _authority(state, db),
+                    requiredEntries=extract_transactions.REQUIRED_ENTRIES,
+                    now_ms=lambda: int(time.time() * 1000))
+            if result["status"] == "partial":
+                graph_outcomes = extract_transactions.apply_extract_graph_stage(
+                    conn, request_hash, prepared["request"]["payload"].get("triples", []),
+                    evidence_ids=[item.get("memoryId") for item in result["ack"].get("written", [])],
+                    applied_at_ms=int(time.time() * 1000))
+                thread_outcomes = extract_transactions.apply_extract_threads_stage(
+                    conn, request_hash, "master", prepared["request"]["payload"].get("text", ""),
+                    prepared["request"]["payload"].get("threads", []),
+                    applied_at_ms=int(time.time() * 1000))
+                ack = dict(result["ack"])
+                stage_rows = conn.execute(
+                    "SELECT stage,status FROM memory_extract_stage_receipts "
+                    "WHERE request_hash=?", (request_hash,)).fetchall()
+                ack["stageStatuses"] = extract_transactions.aggregate_stage_statuses(stage_rows)
+                extract_transactions.record_ack(
+                    conn, request_hash, ack, ack["stageStatuses"], "partial",
+                    applied_at_ms=int(time.time() * 1000))
+                # Return the receipt just persisted after graph/thread stages.
+                # The body result still contains the earlier pending summary.
+                result["ack"] = ack
+            elif result["status"] == "duplicate":
+                prior = conn.execute(
+                    "SELECT stale_skipped FROM memory_extract_ack_receipts WHERE request_hash=?",
+                    (request_hash,)).fetchone()
+                already_stale_skipped = bool(prior and prior[0] == 1)
+            conn.execute("COMMIT")
+            state["a1_commit_response_pending"] = True
+        except Exception:
+            if conn.in_transaction:
+                conn.execute("ROLLBACK")
+            raise
+    finally:
+        conn.close()
+    if stale_skipped:
+        return {"type": "memory_extract_commit_result", "requestHash": request_hash,
+                "status": "stale_skipped", "staleSkipped": True, "a1": _binding(current)}
+    if already_stale_skipped:
+        return {"type": "memory_extract_commit_result", "requestHash": request_hash,
+                "status": "duplicate", "staleSkipped": True, "a1": _binding(current)}
+    return {"type": "memory_extract_commit_result",
+            "requestHash": request_hash, "status": result["status"],
+            "ack": result.get("ack"), "a1": _binding(current)}
+
+
+def _memory_retrieval_prepare(frame, state, current):
+    kind = frame.get("kind")
+    _retrieval_gate(frame, current, kind)
+    _retrieval_origin(frame.get("origin"), kind, current)
+    supplied = frame.get("opts", {})
+    retrieval_transactions.exact(supplied, (), retrieval_transactions.OPTION_KEYS)
+    automatic = kind == "auto_context"
+    # Defaults come from the same production constants as the legacy frame handlers.
+    opts = {"dedupe": automatic, "coreBlock": retrieve.PROD_CORE_BLOCK,
+            "fusion": retrieve.PROD_FUSION if automatic else None,
+            "timeArm": retrieve.PROD_TIME_ARM if automatic else False,
+            "timeMode": "boost", "expandTerms": None,
+            "expandScore": retrieve.PROD_EXPAND_SCORE if automatic else False,
+            "augKeys": retrieve.PROD_AUG_KEYS if automatic else False}
+    if automatic:
+        opts.update(supplied)
+    elif any(value != opts[key] for key, value in supplied.items()):
+        raise authority.AuthorityError("a1_invalid_input")
+    payload = {"userId": frame.get("userId"), "query": frame.get("query"),
+               "topK": frame.get("topK", 6), "rankAtMs": frame.get("rankAtMs"), "opts": opts,
+               "rankingData": frame.get("rankingData")}
+    if "rankingData" not in frame:
+        raise authority.AuthorityError("a1_invalid_input")
+    raw = retrieval_transactions.compact(payload)
+    request = {"protocol": retrieval_transactions.MEMORY_RETRIEVAL_PROTOCOL,
+               "epoch": current["epoch"], **{key: value for key, value in frame["origin"].items() if key != "kind"},
+               "kind": kind, "payloadJson": raw}
+    retrieval_transactions.normalize(request, current["generation"])
+    conn = dbmod.connect_raw(state["db_path"], read_only=True)
+    try:
+        _authority(state, conn)
+        prepared = retrieval_transactions.inspect_memory_retrieval_prepared(conn)
+        if prepared["status"] != "ready":
+            raise retrieval_transactions.RetrievalError(prepared["reason"])
+    finally:
+        conn.close()
+    return {"type": "memory_retrieval_prepare_result", "payloadJson": raw, "a1": _binding(current)}
+
+
+def _memory_retrieval_commit(frame, state, current):
+    request = frame.get("request")
+    kind = request.get("kind") if isinstance(request, dict) else None
+    _retrieval_gate(frame, current, kind)
+    normalized = retrieval_transactions.normalize(request, current["generation"])
+    if normalized["epoch"] != current["epoch"]:
+        raise authority.AuthorityError("a1_epoch_mismatch")
+    origin = {key: value for key, value in request.items() if key not in ("protocol", "epoch", "payloadJson")}
+    _retrieval_origin(origin, kind, current)
+    conn = dbmod.connect_raw(state["db_path"])
+    try:
+        conn.execute("PRAGMA busy_timeout=0")
+        conn.execute("BEGIN IMMEDIATE")
+        try:
+            latest = _authority(state, conn)
+            _retrieval_gate(frame, latest, kind)
+            _retrieval_origin(origin, kind, latest)
+            result = retrieval_transactions.apply_memory_retrieval_transactions(
+                conn, request, generation=latest["generation"])
+            conn.execute("COMMIT")
+            state["a1_commit_response_pending"] = True
+        except Exception:
+            if conn.in_transaction:
+                conn.execute("ROLLBACK")
+            raise
+    finally:
+        conn.close()
+    return {**result["result"], "retrievalReceipt": {"status": result["status"], "accepted": True}}
+
+
+def _memory_retrieval_read(frame, state, current):
+    if current["status"] != "active" or "memory_retrieve" not in current["entries"]:
+        raise authority.AuthorityError("a1_entry_not_integrated")
+    binding = frame.get("a1")
+    if (not isinstance(binding, dict)
+            or set(binding) != {"protocol", "epoch", "generation"}
+            or binding["protocol"] != authority.MEMORY_AUTHORITY_PROTOCOL
+            or binding["epoch"] != current["epoch"]
+            or binding["generation"] != current["generation"]):
+        raise authority.AuthorityError("a1_authority_changed")
+    user_id = str(frame.get("userId") or "")
+    query = str(frame.get("query") or "")
+    if not user_id or not query:
+        raise authority.AuthorityError("a1_invalid_input")
+    top_k = int(frame.get("topK") or 6)
+    opts = frame.get("opts") if isinstance(frame.get("opts"), dict) else {}
+    core_block = bool(opts.get("coreBlock", retrieve.PROD_CORE_BLOCK))
+    fusion = opts.get("fusion", retrieve.PROD_FUSION)
+    time_arm = bool(opts.get("timeArm", retrieve.PROD_TIME_ARM))
+    time_mode = str(opts.get("timeMode", "boost"))
+    ext = opts.get("expandTerms")
+    extra_terms = [str(value) for value in ext] if isinstance(ext, list) else None
+    expand_score = bool(opts.get("expandScore", retrieve.PROD_EXPAND_SCORE))
+    aug_keys = bool(opts.get("augKeys", retrieve.PROD_AUG_KEYS))
+    conn = dbmod.connect_raw(state["db_path"], read_only=True)
+    try:
+        before_changes = conn.total_changes
+        items, _, candidate_metadata = retrieve.retrieve_with_metadata(
+            conn, user_id, query, top_k, reinforce=False,
+            core_block=core_block, fusion=fusion, time_arm=time_arm,
+            time_mode=time_mode, extra_terms=extra_terms,
+            expand_score=expand_score, aug_keys=aug_keys)
+        if conn.total_changes != before_changes:
+            raise RuntimeError("retrieval_read_write_detected")
+    finally:
+        conn.close()
+    return {
+        "type": "memory_retrieval_read_result",
+        "items": items,
+        "text": retrieve.render_episodic(items),
+        "candidateMeta": candidate_metadata,
+        "reinforced": 0,
+        "readOnly": True,
+        "writeChanges": 0,
+        "a1": _binding(current),
+    }
+
+
+def _teach_origin(origin, current):
+    required = {"protocol", "epoch", "sourceKind", "sourceIdentity", "occurredAtMs"}
+    if (type(origin) is not dict or set(origin) != required
+            or origin["protocol"] != body_transactions.MEMORY_BODY_PROTOCOL
+            or origin["epoch"] != current["epoch"] or origin["sourceKind"] != "teach"
+            or not authority.integer(origin["occurredAtMs"], 1)
+            or origin["occurredAtMs"] < current["cutoffAtMs"]):
+        raise authority.AuthorityError("a1_invalid_origin")
+    body_transactions.identity(origin["sourceIdentity"])
+
+
+def _memory_add_prepare(frame, state, current):
+    _active_binding(frame, current)
+    _teach_origin(frame.get("origin"), current)
+    text = str(frame.get("text") or "").strip()
+    if not text:
+        raise authority.AuthorityError("a1_invalid_input")
+    slot = re.sub(r"[^0-9A-Za-z_\u4e00-\u9fff]+", "_",
+                  str(frame.get("slot") or "").strip())[:64].strip("_")
+    layer = "L0" if str(frame.get("layer") or "").strip().upper() == "L0" else "L2"
+    kws = episodic.derive_keywords(text)
+    conn = dbmod.connect_raw(state["db_path"], read_only=True)
+    try:
+        _authority(state, conn)
+        row = conn.execute(
+            "SELECT mood_intensity FROM agent_state ORDER BY updated_at DESC LIMIT 1").fetchone()
+        mood = float(row[0]) if row and row[0] else 3.0
+        i_val = dmae.compute_intrinsic_value(
+            layer=layer, certainty="explicit", attribution="user_explicit",
+            stability="stable", emotion=mood, quote_count=len(kws))
+    finally:
+        conn.close()
+    value = {"keywords": kws, "summary": text[:120], "emotionScore": 3,
+             "source": "user_taught", "sourceLabel": "echo_remember", "actor": "master",
+             "intrinsicValue": i_val, "memoryKey": slot, "layer": layer}
+    payload = body_transactions.compact({"items": [{"ordinal": 0, "input": value}]})
+    return {"type": "memory_add_prepare_result", "payloadJson": payload,
+            "keywords": kws, "I": round(i_val, 1), "layer": layer, "a1": _binding(current)}
+
+
+def _memory_add_active(frame, state, current):
+    _active_binding(frame, current)
+    body = frame.get("body")
+    normalized = body_transactions.normalize(body)
+    _teach_origin({key: value for key, value in body.items() if key != "payloadJson"}, current)
+    ordinal, value, _ = normalized["items"][0]
+    if (len(normalized["items"]) != 1 or ordinal != 0
+            or value.get("actor", "master") != "master"
+            or value.get("isMaster", True) is not True
+            or value["source"] != "user_taught" or value.get("sourceLabel") != "echo_remember"
+            or value.get("layer") not in ("L0", "L2")
+            or "intrinsicValue" not in value):
+        raise authority.AuthorityError("a1_invalid_input")
+    conn = dbmod.connect_raw(state["db_path"])
+    try:
+        conn.execute("PRAGMA busy_timeout=0")
+        conn.execute("BEGIN IMMEDIATE")
+        try:
+            latest = _authority(state, conn)
+            _active_binding(frame, latest)
+            _teach_origin({key: value for key, value in body.items() if key != "payloadJson"}, latest)
+            result = body_transactions.apply_memory_body_transactions(conn, body)
+            conn.execute("COMMIT")
+            state["a1_commit_response_pending"] = True
+        except Exception:
+            if conn.in_transaction:
+                conn.execute("ROLLBACK")
+            raise
+    finally:
+        conn.close()
+    return {"type": "memory_add_result", "memoryId": int(result["written"][0]["memoryId"]),
+            "keywords": value["keywords"], "I": round(value["intrinsicValue"], 1),
+            "layer": value["layer"], "bodyReceipt": {
+                "status": "duplicate" if result["status"] == "duplicate" else "committed",
+                "accepted": True}}
+
+
 def _db_conn(state):
     """业务帧取库连接。
 
@@ -117,6 +592,9 @@ def _db_conn(state):
     """
     if not state.get("db_ok") or not state.get("db_path"):
         raise RuntimeError("db unavailable (hello reported not ok)")
+    current = _authority(state)
+    if current["status"] in ("prepared", "active"):
+        return dbmod.connect_raw(state["db_path"])
     return threads.connect(state["db_path"], must_exist=True)
 
 
@@ -134,7 +612,7 @@ def verify_db(db_path):
     if db_path != ":memory:" and not Path(db_path).exists():
         return {"ok": False, "path": db_path, "error": "db file not found"}
     try:
-        conn = sqlite3.connect(db_path)
+        conn = dbmod.connect_raw(db_path, read_only=True)
         try:
             row = conn.execute(
                 "SELECT COUNT(*) FROM sqlite_master WHERE type='table'"
@@ -217,9 +695,21 @@ def handle(frame, state):
         state["db"] = verify_db(db_path)
         state["db_ok"] = bool(state["db"]["ok"])
         state["db_path"] = db_path
+        try:
+            current = _authority(state)
+            if current["status"] == "active" and not authority.binding_matches(frame.get("a1"), current):
+                raise authority.AuthorityError("a1_binding_mismatch")
+            if ("memory_association" in current["entries"]
+                    and frame.get("a1Entries") != current["entries"]):
+                raise authority.AuthorityError("a1_profile_mismatch")
+        except authority.AuthorityError as exc:
+            send(error_frame(req_id, str(exc), fatal=True))
+            return "fatal"
+        state["a1_boot"] = current
         state["ready"] = True
         # ---- Step B:向量臂预热(默认关;后台线程,永不阻塞握手) ----
-        start_embed_warmup(state, db_path)
+        if current["status"] == "legacy":
+            start_embed_warmup(state, db_path)
         send({
             "reqId": req_id,
             "type": "ready",
@@ -228,6 +718,9 @@ def handle(frame, state):
             "protocol": PROTOCOL,
             "db": state["db"],
             "embed": state.get("embed"),
+            "a1": {**current, "strengthProtocol": "echo-memory-strength/v1",
+                   "bodyProtocol": body_transactions.MEMORY_BODY_PROTOCOL,
+                   "supportedEntries": list(authority.SUPPORTED_ENTRIES)},
         })
         return None
 
@@ -240,6 +733,165 @@ def handle(frame, state):
     if ftype == "ping":
         send({"reqId": req_id, "type": "pong"})
         return None
+
+    if ftype in ("memory_snapshot_install", "memory_snapshot_close"):
+        registry = state.setdefault("snapshot_registry", SnapshotHandleRegistry())
+        try:
+            result = (registry.install(frame) if ftype == "memory_snapshot_install"
+                      else registry.close(frame))
+            send({"reqId": req_id, "type": ftype + "_result", **result})
+        except SnapshotRegistryError as exc:
+            send(error_frame(req_id, str(exc)))
+        except Exception:
+            send(error_frame(req_id, "snapshot_control_failed"))
+        return None
+
+    if ftype == "graph_query" and frame.get("snapshotHandle") is not None:
+        owner = str(frame.get("userId") or "")
+        if not owner:
+            send(error_frame(req_id, "snapshot_user_id_required"))
+            return None
+        registry = state.get("snapshot_registry")
+        if registry is None:
+            send(error_frame(req_id, "snapshot_handle_invalid"))
+            return None
+        item, reason = registry.get(frame.get("snapshotHandle"), frame)
+        if item is None:
+            send(error_frame(req_id, reason or "snapshot_handle_invalid"))
+            return None
+        conn = item["reader"].get("connection")
+        try:
+            if conn is None or conn.execute("PRAGMA query_only").fetchone()[0] != 1:
+                raise SnapshotRegistryError("snapshot_read_only_required")
+            before_changes = conn.total_changes
+            text = str(frame.get("text") or "")
+            top_k = int(frame.get("topK") or graph.ACTIVATION_TOP_K)
+            now_val = frame.get("now")
+            now = float(now_val) if now_val else time.time()
+            result = graph.query_readonly_snapshot(
+                conn, owner, text, top_k, now_ts=now,
+                extra_seeds=frame.get("extraSeeds"))
+            if conn.total_changes != before_changes:
+                raise SnapshotRegistryError("snapshot_write_detected")
+            paths = result["paths"]
+            ltp_edge_ids = set()
+            hit_edge_ids = set(result["seedEdgeIds"])
+            pinned_count = 0
+            for path in paths:
+                if path.get("pinned"):
+                    pinned_count += 1
+                    continue
+                for edge_id in path.get("edge_ids", []):
+                    if edge_id is not None:
+                        ltp_edge_ids.add(int(edge_id))
+                        hit_edge_ids.add(int(edge_id))
+            send({
+                "reqId": req_id, "type": "graph_query_result",
+                "pathsText": graph.render_paths(paths),
+                "seedNames": result["seedNames"],
+                "hitEdgeIds": sorted(hit_edge_ids),
+                "ltpEdgeIds": sorted(ltp_edge_ids),
+                "seedEdgeIds": sorted(result["seedEdgeIds"]),
+                "pinnedCount": pinned_count, "now": now,
+                "readOnlySnapshot": True,
+                "snapshotReceipt": receipt_summary(item["reader"]),
+            })
+        except SnapshotRegistryError as exc:
+            send(error_frame(req_id, str(exc)))
+        except ValueError as exc:
+            reason = str(exc) if str(exc) in {
+                "snapshot_graph_schema_missing", "snapshot_graph_schema_incompatible",
+                "snapshot_graph_input_invalid"
+            } else "snapshot_graph_query_failed"
+            send(error_frame(req_id, reason))
+        except (TypeError, sqlite3.Error):
+            send(error_frame(req_id, "snapshot_graph_query_failed"))
+        return None
+
+    if ftype != "shutdown":
+        try:
+            current = _authority(state)
+        except authority.AuthorityError as exc:
+            send(error_frame(req_id, str(exc)))
+            return None
+        if ftype == "memory_retrieval_read":
+            try:
+                send({"reqId": req_id, **_memory_retrieval_read(frame, state, current)})
+            except authority.AuthorityError as exc:
+                send(error_frame(req_id, str(exc)))
+            except Exception:
+                send(error_frame(req_id, "retrieval_read_failed"))
+            return None
+        if current["status"] == "active" and ftype in {
+                "retrieve", "memory_search", "memory_forget",
+                "reflection_prompt", "reflection_commit", "episodic_cleanup", "episodic_clear",
+                "graph_query", "graph_reinforce", "extract_commit"}:
+            send(error_frame(req_id, "a1_entry_not_integrated"))
+            return None
+        if current["status"] == "active" and ftype in (
+                "extract_prompt",
+                "memory_extract_prepare", "memory_extract_commit") \
+                and "memory_extract" not in current["entries"]:
+            send(error_frame(req_id, "a1_entry_not_integrated"))
+            return None
+        if ftype in ("memory_extract_prepare", "memory_extract_commit"):
+            if "memory_extract" not in current["entries"]:
+                send(error_frame(req_id, "a1_entry_not_integrated"))
+                return None
+            state["a1_commit_response_pending"] = False
+            try:
+                handler = _extract_prepare if ftype == "memory_extract_prepare" else _extract_commit
+                result = handler(frame, state, current)
+                send({"reqId": req_id, **result})
+                state["a1_commit_response_pending"] = False
+            except Exception as exc:
+                reason = ("a1_outcome_unknown" if state.get("a1_commit_response_pending")
+                          else str(exc) if isinstance(exc, (authority.AuthorityError,
+                                                           extract_transactions.ExtractError))
+                          else "a1_extract_failed")
+                send(error_frame(req_id, reason))
+            return None
+        if ftype == "extract_prompt" and current["status"] == "active":
+            try:
+                send({"reqId": req_id, **_extract_prompt(frame, state, current)})
+            except (authority.AuthorityError, extract_transactions.ExtractError) as exc:
+                send(error_frame(req_id, str(exc)))
+            return None
+        if ftype == "extract_prompt" and current["status"] == "blocked":
+            send(error_frame(req_id, current.get("reason") or "a1_authority_invalid"))
+            return None
+        if (ftype in ("memory_add_prepare", "memory_retrieval_prepare", "memory_retrieval_commit")
+                or (ftype == "memory_add" and current["status"] == "active")):
+            state["a1_commit_response_pending"] = False
+            try:
+                handler = {"memory_add_prepare": _memory_add_prepare,
+                           "memory_add": _memory_add_active,
+                           "memory_retrieval_prepare": _memory_retrieval_prepare,
+                           "memory_retrieval_commit": _memory_retrieval_commit}[ftype]
+                result = handler(frame, state, current)
+            except cancel.RequestCancelled:
+                raise
+            except Exception as exc:
+                reason = str(exc) if isinstance(
+                    exc, (authority.AuthorityError, body_transactions.BodyError,
+                          retrieval_transactions.RetrievalError,
+                          retrieval_transactions.StrengthError)) else "a1_request_failed"
+                if state.get("a1_commit_response_pending"):
+                    reason = "a1_outcome_unknown"
+                send(error_frame(req_id, reason))
+                return None
+            try:
+                send({"reqId": req_id, **result})
+            except Exception:
+                if state.get("a1_commit_response_pending"):
+                    send(error_frame(req_id, "a1_outcome_unknown"))
+                else:
+                    raise
+            state["a1_commit_response_pending"] = False
+            return None
+        if ftype == "memory_add" and ("a1" in frame or "body" in frame):
+            send(error_frame(req_id, "a1_not_active"))
+            return None
 
     if ftype == "embed_probe":
         # Step B:让能发帧的调用方(脚本 / 测试 / 将来的面板路由)主动问
@@ -290,12 +942,39 @@ def handle(frame, state):
         expand_score = bool(opts.get("expandScore", retrieve.PROD_EXPAND_SCORE))
         # 2026-09-30:写入侧"说法键"进打分正文(数据门控:没键的行一个字面都不加)
         aug_keys = bool(opts.get("augKeys", retrieve.PROD_AUG_KEYS))
+        snapshot_handle = frame.get("snapshotHandle")
+        if snapshot_handle is not None:
+            registry = state.get("snapshot_registry")
+            item, reason = (registry.get(snapshot_handle, frame) if registry is not None
+                            else (None, "snapshot_handle_invalid"))
+            if item is None:
+                send(error_frame(req_id, reason or "snapshot_handle_invalid"))
+                return None
+            try:
+                result = retrieve_from_snapshot(
+                    item["path"], item["receipt"], user_id, query, top_k, now=now,
+                    core_block=core_block, fusion=fusion, time_arm=time_arm,
+                    extra_terms=extra_terms, expand_score=expand_score,
+                    aug_keys=aug_keys)
+            except Exception:
+                send(error_frame(req_id, "snapshot_read_failed"))
+                return None
+            if result.get("status") != "ok":
+                send(error_frame(req_id, str(result.get("reason") or "snapshot_read_failed")))
+                return None
+            send({"reqId": req_id, "type": "retrieve_result",
+                  "items": result["items"], "text": retrieve.render_episodic(result["items"]),
+                  "reinforced": 0, "candidateMeta": result["candidateMeta"],
+                  "readOnlySnapshot": True, "snapshotReceipt": result["receipt"],
+                  "now": now, "state": None, "profile": None})
+            return None
         # (v0.29.0:渠道过滤随群聊拒收一起退役 —— 记忆不再分渠道。)
         try:
             conn = _db_conn(state)
             try:
-                items, reinforced = retrieve.retrieve(
+                items, reinforced, candidate_metadata = retrieve.retrieve_with_metadata(
                     conn, user_id, query, top_k, now=now,
+                    reinforce=bool(opts.get("reinforce", True)),
                     core_block=core_block, fusion=fusion, time_arm=time_arm,
                     extra_terms=extra_terms, expand_score=expand_score,
                     aug_keys=aug_keys)
@@ -306,7 +985,7 @@ def handle(frame, state):
             return None
         send({"reqId": req_id, "type": "retrieve_result",
               "items": items, "text": retrieve.render_episodic(items),
-              "reinforced": reinforced, "now": now,
+              "reinforced": reinforced, "candidateMeta": candidate_metadata, "now": now,
               "state": None, "profile": None})
         return None
 
@@ -316,9 +995,13 @@ def handle(frame, state):
         # v0.16.0 M2:knownEntities 由壳给(它读得到库),引擎只负责拼进
         # 提示词 —— 「复用现有实体名」这条纪律比事后合并图谱便宜且保真。
         known = frame.get("knownEntities")
+        names = frame.get("names")
+        names = names if isinstance(names, dict) else {}
         send({"reqId": req_id, "type": "extract_prompt_result",
               "prompt": judge.build_extract_prompt(
-                  known_entities=known if isinstance(known, list) else None),
+                  known_entities=known if isinstance(known, list) else None,
+                  owner_names=names.get("ownerNames"),
+                  agent_names=names.get("speakers")),
               "schema": judge.build_extract_schema()})
         return None
 
@@ -1284,7 +1967,11 @@ def main():
             verdict = None
         except Exception as exc:  # 兜底:引擎异常是应答,不是崩溃
             diag("handle failed on %r: %s" % (frame.get("type"), exc))
-            send(error_frame(req_id, "internal error: " + str(exc)))
+            reason = ("a1_outcome_unknown" if state.get("a1_commit_response_pending") else
+                      "a1_request_failed" if state.get("a1_boot", {}).get("status") == "active" else
+                      "internal error: " + str(exc))
+            send(error_frame(req_id, reason))
+            state["a1_commit_response_pending"] = False
             verdict = None
         finally:
             cancel.end(req_id)

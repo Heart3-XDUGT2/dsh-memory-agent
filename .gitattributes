@@ -22,4 +22,5 @@
 /LICENSES/*.txt -text
 /lib/ipc-core/LICENSE -text
 /web/vendor/LICENSE.d3.txt -text
-/tests/fixtures/host-web-app/** -text
+/web/mock/final/vendor/jiulin/NOTICE.txt -text
+/web/mock/final/vendor/jiulin/THREE-LICENSE.txt -text

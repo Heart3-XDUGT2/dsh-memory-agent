@@ -58,7 +58,7 @@ directories and does not accept preset paths」)、`dsh-agent-preset/src/index.t
 (`path.join` 收到数组,`loadProfileDirectory`,`dsh-app-boot/lib/index.js:853`,实测)。
 ⇒ 生成器**按世代自摆**:0.2.0 写数组 `["./cordis.patch.yml","./preset.patch.yml"]`,
 0.1.x 摆回字符串 `"./cordis.patch.yml"`(`setBundlePatchForm` / `ensureManifestForm`;
-`npm run check` 的世代门也钉着这个形态)。
+独立的 `scripts/check-preset-patch.mjs` 校验这一形态)。
 
 ### 4. 没变的(源码量过,一个字都不用改)
 
@@ -83,11 +83,11 @@ directories and does not accept preset paths」)、`dsh-agent-preset/src/index.t
    `dsh-web-app/presets/standard.patch.yml` = 0.2.0 世代)⇒ 0.2.0 写声明行,
    0.1.x 照旧走预设目录;`--check` / `--force` / `--remove` 两边都支持;
    manifest 形态跟着世代自摆。升级后**跑一次**即可,幂等。
-3. **`scripts/check-preset-patch.mjs` 世代门**(`npm run check` 第五闸):
+3. **`scripts/check-preset-patch.mjs` 世代门**（单独运行，不属于[发布树静态检查](TESTING.md)）:
    按世代验 `preset.patch.yml` 的形状(0.2.0 ⇒ 有 `preset-echo` 行且没有出厂压缩行;
    0.1.x ⇒ 一行 `- id:` 都不许有)+ manifest 形态 + 预设目录清单钉子。
 4. **`peerDependencies`**(`dsh-echo` / `dsh-echo-qq`)。
-5. 电池:`tests/preset-declaration.test.js` 13 条(手术保真、幂等、失败要报原因、
+5. 历史回归（当前发布树不含该套件）:`tests/preset-declaration.test.js` 13 条(手术保真、幂等、失败要报原因、
    旧刀还在、manifest 形态双向)。
 
 ## 验收(全部实测,不是推演)

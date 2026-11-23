@@ -39,6 +39,8 @@ import re
 import sqlite3
 import time
 import uuid
+from datetime import datetime, timedelta, timezone
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from . import cancel
 from . import dmae
@@ -250,7 +252,7 @@ def _alias_target(conn, name: str):
 
 
 def get_or_create_node(conn, name: str, node_type: str = "concept",
-                       owner_key: str = "master") -> str:
+                       owner_key: str = "master", *, _owns_transaction=True) -> str:
     """按名取节点,无则创建(node_id=uuid16),命中刷新 last_accessed。
 
     v0.16.0 M2:取之前先过一遍别名表 —— 「西电」落到「西安电子科技大学」。
@@ -289,7 +291,8 @@ def get_or_create_node(conn, name: str, node_type: str = "concept",
             "UPDATE graph_nodes SET last_accessed = ? WHERE node_id = ?",
             (time.time(), node_id),
         )
-        conn.commit()
+        if _owns_transaction:
+            conn.commit()
         return node_id
     node_id = uuid.uuid4().hex[:16]
     conn.execute(
@@ -298,7 +301,8 @@ def get_or_create_node(conn, name: str, node_type: str = "concept",
         " VALUES (?, ?, ?, ?, ?)",
         (node_id, name, node_type, time.time(), owner_key),
     )
-    conn.commit()
+    if _owns_transaction:
+        conn.commit()
     return node_id
 
 
@@ -381,7 +385,7 @@ def _merge_evidence(old: str, new_ids, limit: int = 8) -> str:
 
 def add_edge(conn, s, rel, t, owner_key, intrinsic_value=0.0, *,
              layer="", occurred_at=0.0, temporal_status="", evidence="",
-             kind=""):
+             kind="", _owns_transaction=True):
     """固化一条边:v6.0 半衰期状态 + v2-A1「按基数换代」,三分支。
 
     ① 精确命中同一三元组(含已停用行)→ 视为一次「想起」:权重 +0.5、
@@ -419,8 +423,8 @@ def add_edge(conn, s, rel, t, owner_key, intrinsic_value=0.0, *,
     rel = canonical_relation(rel_raw)
     if not s or not t:
         return
-    src = get_or_create_node(conn, s)
-    tgt = get_or_create_node(conn, t)
+    src = get_or_create_node(conn, s, _owns_transaction=_owns_transaction)
+    tgt = get_or_create_node(conn, t, _owns_transaction=_owns_transaction)
     if src == tgt:
         return
 
@@ -525,7 +529,37 @@ def add_edge(conn, s, rel, t, owner_key, intrinsic_value=0.0, *,
             )
     except Exception:
         pass
-    conn.commit()
+    if _owns_transaction:
+        conn.commit()
+
+
+def apply_triple_caller_owned(conn, triple, owner_key, *, evidence=None, emotion=5.0):
+    """Apply one validated fact triple without committing the caller transaction."""
+    if not conn.in_transaction:
+        raise sqlite3.ProgrammingError("caller_transaction_required")
+    if not isinstance(triple, dict):
+        raise ValueError("graph_triple_invalid")
+    source = str(triple.get("s") or triple.get("source") or "").strip()
+    relation = str(triple.get("relation") or default_relation()).strip()
+    target = str(triple.get("t") or triple.get("target") or "").strip()
+    if not source or not target:
+        raise ValueError("graph_triple_invalid")
+    quotes = triple.get("evidenceQuotes") or []
+    if not isinstance(quotes, list):
+        quotes = []
+    intrinsic_value = dmae.compute_intrinsic_value(
+        layer=str(triple.get("layer") or "L2"),
+        certainty=str(triple.get("certainty") or ""),
+        attribution=str(triple.get("attribution") or ""),
+        stability=str(triple.get("stability") or ""),
+        emotion=emotion, quote_count=len(quotes))
+    add_edge(conn, source, relation, target, owner_key, intrinsic_value,
+             layer=str(triple.get("layer") or ""),
+             occurred_at=float(triple.get("occurredAt") or triple.get("occurred_at") or 0),
+             temporal_status=str(triple.get("temporalStatus")
+                                 or triple.get("temporal_status") or ""),
+             evidence=evidence or [], _owns_transaction=False)
+    return {"source": source, "relation": canonical_relation(relation), "target": target}
 
 
 def load(conn, owner_key: str):
@@ -583,6 +617,56 @@ def load(conn, owner_key: str):
     except Exception:
         return {}, {}, []
     return by_id, by_name, edges
+
+
+def query_readonly_snapshot(conn, owner_key: str, text: str, top_k: int,
+                            now_ts=0.0, extra_seeds=None):
+    """Run graph query against a verified immutable reader without governance.
+
+    The live graph query intentionally performs relation merging and L0
+    migration before loading. Snapshot readers must skip both operations and
+    only use the pure load/seed/BFS/render path.
+    """
+    required = {"graph_nodes", "graph_edges"}
+    names = {
+        str(row[0]) for row in conn.execute(
+            "SELECT name FROM sqlite_master WHERE type='table'"
+        ).fetchall()
+    }
+    if not required.issubset(names):
+        raise ValueError("snapshot_graph_schema_missing")
+    required_columns = {
+        "graph_nodes": {"node_id", "name", "is_protected", "is_active"},
+        "graph_edges": {
+            "edge_id", "source_id", "target_id", "relation", "weight",
+            "half_life", "recall_count", "last_accessed", "intrinsic_value",
+            "slot", "is_active", "superseded_by", "layer", "occurred_at",
+            "temporal_status", "owner_key"
+        }
+    }
+    for table, columns in required_columns.items():
+        actual = {
+            str(row[1]) for row in conn.execute(
+                f'PRAGMA table_info("{table}")'
+            ).fetchall()
+        }
+        if not columns.issubset(actual):
+            raise ValueError("snapshot_graph_schema_incompatible")
+    by_id, by_name, edges = load(conn, owner_key)
+    graph_seeds = direct_seed_hits(text, by_name)
+    raw_seeds = ([str(seed) for seed in extra_seeds if str(seed).strip()]
+                 if isinstance(extra_seeds, list) and extra_seeds
+                 else extract_seed_nodes(text))
+    for seed in match_seeds_to_graph(raw_seeds, by_name):
+        if seed not in graph_seeds:
+            graph_seeds.append(seed)
+    paths, seed_edge_ids = graph_activate(
+        graph_seeds, by_id, by_name, edges, now_ts=now_ts, top_k=top_k)
+    return {
+        "paths": paths,
+        "seedNames": graph_seeds,
+        "seedEdgeIds": seed_edge_ids,
+    }
 
 
 def learn(conn, triples, owner_key, emotion=5.0, evidence_ids=None, diag=None) -> int:
@@ -910,7 +994,21 @@ def graph_activate(
 # 渲染
 # ═══════════════════════════════════════════════════════════════════════
 
-def _fmt_day(ts):
+DEFAULT_MEMORY_TIME_ZONE = "Asia/Shanghai"
+DEFAULT_MEMORY_TZ = timezone(timedelta(hours=8), name=DEFAULT_MEMORY_TIME_ZONE)
+
+
+def _safe_timezone(value):
+    timezone = str(value or "").strip() or DEFAULT_MEMORY_TIME_ZONE
+    if timezone == DEFAULT_MEMORY_TIME_ZONE:
+        return DEFAULT_MEMORY_TZ
+    try:
+        return ZoneInfo(timezone)
+    except (ZoneInfoNotFoundError, ValueError):
+        return DEFAULT_MEMORY_TZ
+
+
+def _fmt_day(ts, timezone=DEFAULT_MEMORY_TIME_ZONE):
     try:
         value = float(ts or 0.0)
     except (TypeError, ValueError):
@@ -918,27 +1016,28 @@ def _fmt_day(ts):
     if value <= 0:
         return ""
     try:
-        return time.strftime("%Y-%m-%d", time.localtime(value))
+        return datetime.fromtimestamp(value, _safe_timezone(timezone)).strftime("%Y-%m-%d")
     except (ValueError, OSError, OverflowError):
         return ""
 
 
-def _time_note(occurred_at, learned_at, temporal_status) -> str:
+def _time_note(occurred_at, learned_at, temporal_status,
+               timezone=DEFAULT_MEMORY_TIME_ZONE) -> str:
     """渲染时间注记 —— 「她记错时间」的机械防线。
 
     occurred_at 事情**发生**的时间;learned_at 我们**得知**的时间。
     这行字是给模型看的硬边界:数据自己写着「事情发生时间未确认」,
     不需要靠模型自觉。
     """
-    occurred = _fmt_day(occurred_at)
-    learned = _fmt_day(learned_at)
+    occurred = _fmt_day(occurred_at, timezone)
+    learned = _fmt_day(learned_at, timezone)
     label = _TEMPORAL_LABELS.get(str(temporal_status or "").strip(), "")
     tail = f"·{label}" if label else ""
     if occurred:
-        return f"（发生时间 {occurred}{tail}）"
+        return f"（发生于 {occurred}{tail}）"
     if learned:
-        return f"（{learned} 提到,事情发生时间未确认{tail}）"
-    return f"（时间未确认{tail}）"
+        return f"（得知于 {learned}，事情发生时间未确认{tail}）"
+    return f"（时间未确认；日期未确认{tail}）"
 
 
 def render_paths(paths) -> str:

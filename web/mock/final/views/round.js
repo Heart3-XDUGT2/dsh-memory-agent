@@ -146,11 +146,14 @@ globalThis.EchoViews.round=(function(){
    const lines=svg('g',{class:'rg-lines'}),nodes=svg('g',{class:'rg-nodes'});frame.append(lines,nodes);nodeEls.clear();edgeEls.clear();
    for(const e of model.edges){const g=svg('g',{class:'rg-edge is-'+e.kind,tabindex:0,role:'button','aria-label':e.fromText+'到'+e.toText+'：'+e.label});g.dataset.edge=e.from+':'+e.to;
      g.append(svg('path',{class:'rg-hit'}),svg('path',{class:'rg-line'}),svg('path',{class:'rg-head'}),svg('text',{class:'rg-edge-label'},e.label));edgeEls.set(e,g);lines.append(g);wire(g,()=>selectEdge(e,g));}
-   for(const n of model.nodes){const b=layout.get(n.index),g=svg('g',{class:'rg-node'+(n.failed?' is-bad':'')+(n.outsider?' is-out':''),tabindex:0,role:'button','aria-label':n.label+'，'+n.status+'，点选读取证据'});g.dataset.node=n.index;
+   for(const n of model.nodes){const b=layout.get(n.index),g=svg('g',{class:'rg-node'+(n.failed?' is-bad':'')+(n.outsider?' is-out':'')+(n.join?' is-join':'')+(n.outputKind==='output'?' is-output':'') ,tabindex:0,role:'button','aria-label':n.label+'，'+n.status+'，点选读取证据'});g.dataset.node=n.index;
      g.append(svg('rect',{class:'rg-box',x:b.x,y:b.y,width:b.w,height:b.h,rx:9}),svg('text',{class:'rg-name',x:b.x+14,y:b.y+26},fitText(n.label,b.w-28,16)),svg('text',{class:'rg-stat',x:b.x+14,y:b.y+50},n.status));
      const summary=svg('text',{class:'rg-stat is-say',x:b.x+14,y:b.y+74});let rest=globalThis.EchoRoundNodeIO.build(turnRef.rows[n.index])?.summary||n.summary;
      for(let k=0;k<(n.parallel?2:1)&&rest;k++){let text=fitText(rest,b.w-28,14);const raw=text.replace(/…$/u,'');summary.append(svg('tspan',{x:b.x+14,dy:k?19:0},k===0&&n.parallel?raw:text));rest=rest.slice(raw.length);}
-     g.append(summary,svg('text',{class:'rf-node-time',x:b.x+14,y:b.y+b.h-14},n.parallel?'报告 '+n.msText:n.startText));nodes.append(g);nodeEls.set(n.index,g);wire(g,()=>selectNode(n.index,g));
+     const output=svg('text',{class:'rg-output',x:b.x+14,y:b.y+(n.parallel?b.h-34:96)},fitText(n.output||'',b.w-28,13));
+     g.append(summary,output,svg('text',{class:'rf-node-time',x:b.x+14,y:b.y+b.h-14},n.parallel?'报告 '+n.msText:n.startText));
+     if(n.join)g.append(svg('text',{class:'rg-join-note',x:b.x+b.w-12,y:b.y-10,'text-anchor':'end'},'并行支汇合'));
+     nodes.append(g);nodeEls.set(n.index,g);wire(g,()=>selectNode(n.index,g));
    }
    if(layout.has(-1)){const b=box(-1),g=svg('g',{class:'rf-origin'});g.append(svg('rect',{x:b.x,y:b.y,width:b.w,height:b.h,rx:6}),svg('text',{x:b.x+12,y:b.y+27,class:'rg-stat'},'起点未记录 · 非审计事件'));nodes.append(g);}
    redrawLines();
@@ -165,6 +168,88 @@ globalThis.EchoViews.round=(function(){
    for(const[e,g]of edgeEls)g.classList.toggle('is-active',selectedEdge===e||selected>=0&&(e.from===selected||e.to===selected));
  }
  function facts(rows){const d=el('dl','rm-facts');for(const[k,v]of rows){const r=el('div');r.append(el('dt','',k),el('dd','',v));d.append(r);}return d;}
+ function memoryEventsBlock(node){
+   const projection=node.memoryProjection,events=node.typedEvents||[];
+   if(!projection&&!events.length)return null;
+   const section=el('section','rf-memory-events');
+   section.append(el('h3','', '记忆提取回执'));
+   section.append(el('p','rf-detail-note',`总状态：${projection?.overallStatus||'unknown'} · ${projection?.relation==='receipt_only'?'持久回执，审计行未观察到':projection?.relation==='audit_only'?'事件已观察，回执未核验':'审计观察与持久回执分层显示'}`));
+   for(const event of events){
+     const detail=el('details','rf-memory-event');
+     detail.append(el('summary','',`${event.label} · ${event.status}`));
+     detail.append(el('p','rf-detail-note',event.summary||'未提供阶段摘要'));
+     const rows=[];
+     if(event.input?.payloadHash)rows.push(['输入摘要哈希',event.input.payloadHash]);
+     if(event.input?.tripleCount!==undefined)rows.push(['输入三元组',String(event.input.tripleCount)]);
+     if(event.input?.evidenceCount!==undefined)rows.push(['证据条数',String(event.input.evidenceCount)]);
+     if(event.output?.stageSummary)rows.push(['阶段状态','四阶段摘要已核对']);
+     if(event.output?.writtenCount!==undefined&&event.output?.writtenCount!==null)rows.push(['写入条数',String(event.output.writtenCount)]);
+     if(event.output?.committedCount!==undefined)rows.push(['图谱提交',String(event.output.committedCount)]);
+     if(event.output?.registeredCount!==undefined)rows.push(['话题登记',String(event.output.registeredCount)]);
+     if(event.output?.callbackCount!==undefined&&event.output?.callbackCount!==null)rows.push(['宿主回调',String(event.output.callbackCount)]);
+     if(event.reason)rows.push(['原因',event.reason]);
+     if(rows.length)detail.append(facts(rows));
+     section.append(detail);
+   }
+   if((node.memoryEdges||[]).length){
+     const relationText=node.memoryEdges.map(edge=>`${edge.kind==='explicit_dependency'?'明确依赖':edge.kind==='attempted_use'?'尝试取用':'记录先后'}：${edge.label}`).join(' · ');
+     section.append(el('p','rf-detail-note',relationText));
+   }
+   return section;
+ }
+ function stageFactsBlock(node){
+   const factsList = node.stageFacts || [];
+   if (!factsList.length) return null;
+   const section = el('section','rf-stage-facts');
+   section.append(el('h3','','新架构回执摘要'));
+   for (const fact of factsList) {
+     const rows = [];
+     if (fact.kind === 'retrieval') rows.push(
+       ['检索状态', fact.retrievalStatus], ['候选数', String(fact.candidateCount)],
+       ['只读读取', fact.readOnly === null ? 'unknown' : fact.readOnly ? '是' : '否'],
+       ['强化状态', fact.strengthStatus], ['强化尝试', fact.attempted ? '是' : '否'],
+       ['写入数', String(fact.writtenCount)], ['事件数', String(fact.eventCount)],
+       ['原因', fact.reason || '—'])
+     if (fact.kind === 'association') rows.push(
+       ['关联状态', fact.associationStatus], ['回执状态', fact.receiptStatus],
+       ['选中 Memory', String(fact.selectedCount)], ['使用单元', String(fact.unitCount)],
+       ['原因', fact.reason || '—'])
+     if (fact.kind === 'online') rows.push(
+       ['在线状态', fact.onlineStatus], ['目标数', String(fact.targetCount)],
+       ['操作数', String(fact.operationCount)], ['校验原因', fact.validationReason || '—'],
+       ['回执状态', fact.receiptStatus],
+       ['批次摘要', fact.batchKeyHash ? fact.batchKeyHash.slice(0, 12) : 'unknown'],
+       ['版本摘要', fact.sourceVersionHash ? fact.sourceVersionHash.slice(0, 12) : 'unknown'])
+     if (fact.kind === 'consolidation') rows.push(
+       ['整固状态', fact.consolidationStatus], ['候选数', String(fact.candidateCount)],
+       ['操作数', String(fact.operationCount)], ['回执状态', fact.receiptStatus],
+       ['有界/截断', fact.bounded ? '是' : 'unknown'],
+       ['源版本', fact.sourceVersionHash ? fact.sourceVersionHash.slice(0, 12) : 'unknown'],
+       ['目标版本', fact.targetVersionHash ? fact.targetVersionHash.slice(0, 12) : 'unknown'],
+       ['原因', fact.reason || '—'])
+     const detail = el('details','rf-stage-fact')
+     detail.append(el('summary','', fact.kind === 'retrieval' ? '检索与强化'
+       : fact.kind === 'association' ? '关联使用'
+         : fact.kind === 'online' ? '在线图写入' : '夜间整固'))
+     detail.append(facts(rows))
+     section.append(detail)
+   }
+   return section
+ }
+ function stageSummaryBlock(model){
+   const factsList=model.nodes.flatMap(node=>node.stageFacts||[]);
+   const find=kind=>factsList.find(fact=>fact.kind===kind);
+   const labels=[
+     ['检索/强化','retrieval',fact=>fact?`检索 ${fact.retrievalStatus} · 强化 ${fact.strengthStatus}`:'未核验'],
+     ['关联使用','association',fact=>fact?`关联 ${fact.associationStatus} · 回执 ${fact.receiptStatus}`:'未核验'],
+     ['在线图','online',fact=>fact?`在线图 ${fact.onlineStatus} · 回执 ${fact.receiptStatus}`:'未核验'],
+     ['夜间整固','consolidation',fact=>fact?`整固 ${fact.consolidationStatus} · 回执 ${fact.receiptStatus}`:'未核验']
+   ];
+   const section=el('section','rm-stage-summary');
+   section.setAttribute('aria-label','新架构状态摘要');
+   for(const [label,kind,render] of labels){const item=el('div','rm-stage-summary-item');item.append(el('strong','',label),el('span','',render(find(kind))));section.append(item);}
+   return section;
+ }
  function open(title,source){
    stopDemo(false);cancelMotion();preview.hidden=true;returnFocus=source;overlay.hidden=false;overlay.querySelector('h2').textContent=title;globalThis.EchoBackgroundView.invalidate(overlayBody);overlayBody.replaceChildren();
    readingPositions={};hiddenNote=null;motion(overlay,[{transform:'translateY(14px)',opacity:.5},{transform:'translateY(0)',opacity:1}],{duration:200,easing:'cubic-bezier(.16,1,.3,1)'});
@@ -174,6 +259,8 @@ globalThis.EchoViews.round=(function(){
  function selectNode(i,source=nodeEls.get(i),navigate=false){
    selected=i;selectedEdge=null;const n=model.nodes[i];open(n.label,source);highlight();
    const row=turnRef.rows[i],reader=globalThis.EchoRoundNodeIO,reading=reader.build(row),compact=reader.project(row);if(reading)overlayBody.append(reader.render(screen,reading,compact));
+   const stageFacts=stageFactsBlock(n);if(stageFacts)overlayBody.append(stageFacts);
+   const memoryEvents=memoryEventsBlock(n);if(memoryEvents)overlayBody.append(memoryEvents);
    for(const c of n.contents.filter(c=>!reading||c.label!=='检索查询')){const s=el('section','rf-content');s.append(el('h3','',c.label),el('p','',c.text));overlayBody.append(s);}
    if(!reading&&!n.contents.length){let found=false;for(const[field,label]of[['userInput','输入'],['llmReply','返回']])if(reader.useful(row[field])){const s=el('section','rf-content');s.append(el('h3','',label),reader.valueNode(screen,reader.object(row[field])||row[field]));overlayBody.append(s);found=true;}if(!found)overlayBody.append(el('p','rf-detail-note','这条记录未保存输入或结果。'));}
    const values=[['状态',n.status,!reading&&(n.failed||n.queueSuccess||n.queueFailure)],['在干什么',n.summary,!reading&&!n.contents.length],['记录时刻',n.startText,false],['已记录区间',n.intervalRecorded?clock(n.at)+' → '+clock(n.end):'未记录；时间轴显示时刻点',false],['该记录报告时长',n.msText,n.ms!==null],['信号',n.failed?n.failText:'未记录明确失败信号',!reading&&n.failed],...(n.drops?[['未采纳原因',n.drops,true]]:[]),...(n.rawText?[['原始名',n.rawText,false]]:[])],details=el('dl','rm-facts');for(const[label,value,keep]of values){const part=el('div');part.dataset.readKey='fact.'+label;part.append(el('dt','',label),el('dd','',value));details.append(auxiliary(part,!keep));}overlayBody.append(details);
@@ -215,13 +302,31 @@ globalThis.EchoViews.round=(function(){
    if(demoPlaying&&demoIndex<model.levels.length-1)demoTimer=setTimeout(advance,1000);else{demoPlaying=false;demoTimer=0;paintDemo();}
  }
  function toggleDemo(){if(demoPlaying){stopDemo(false);return;}close(false);if(reduced()){advance();return;}if(demoIndex>=model.levels.length-1)demoIndex=-1;demoPlaying=true;advance();}
- function initial(){const b=bounds();camera.fit(b,true);if(viewport.clientWidth<600){const n=model.nodes.find(n=>n.tool==='retrieve')||model.nodes[0];if(n){const r=box(n.index);camera.set({x:viewport.clientWidth/2-(r.x+r.w/2),y:viewport.clientHeight*.4-(r.y+r.h/2),k:1});}}}
+ function initial(){
+   const b=bounds();camera.fit(b,true);
+   if(window.innerWidth>=600&&window.innerWidth<1100){
+     const k=Math.max(.42,Math.min(.78,(viewport.clientWidth-24)/Math.max(1,b.w),(viewport.clientHeight-108)/Math.max(1,b.h)));
+     const usableH=Math.max(1,viewport.clientHeight-108);
+     camera.set({x:viewport.clientWidth/2-(b.x+b.w/2)*k,y:54+usableH/2-(b.y+b.h/2)*k,k});
+   } else if(window.innerWidth<600){
+     const n=model.nodes.find(n=>n.tool==='retrieve')||model.nodes[0];
+     if(n){const k=.8,r=box(n.index);camera.set({x:viewport.clientWidth/2-(r.x+r.w/2)*k,y:viewport.clientHeight*.47-(r.y+r.h/2)*k,k});}
+   }
+ }
  function reset(){stopDemo(true);close();offsets.clear();for(const n of nodeEls.values())n.removeAttribute('transform');redrawLines();initial();}
  function render(turn,key,restore){
    turnRef=turn;model=api().graphOf(turn,screen);host.replaceChildren();host.dataset.roundKey=key;selected=-1;selectedEdge=null;adjusting=false;layout=project();const ids=identities(turn),saved=new Map(restore?.offsets||[]);offsets=new Map(ids.flatMap((id,i)=>saved.has(id)?[[i,saved.get(id)]]:[]));
    const lead=document.getElementById('view-lead');if(lead)lead.textContent=model.head+' · 记录跨度 '+model.totalText;
+   host.append(stageSummaryBlock(model));
+   if(model.evidence?.length||model.backgroundText){
+     const strip=el('section','rm-evidence-strip');strip.setAttribute('aria-label','本轮输入与产出摘要');
+     for(const item of model.evidence||[]){const card=el('div','rm-evidence-item');card.append(el('h2','',item.label),el('p','',item.text||'未明确记录'));strip.append(card);}
+     if(model.backgroundText)strip.append(el('p','rm-evidence-background',model.backgroundText));
+     host.append(strip);
+   }
    simpleButton=button('精简信息',toggleSimple,'rm-simple-toggle');simpleButton.setAttribute('aria-pressed',String(simple));simpleButton.setAttribute('aria-label','精简信息');document.querySelector('.view-tools')?.insertBefore(simpleButton,document.getElementById('view-refresh'));
-   viewport=el('section','rm-map');viewport.tabIndex=0;viewport.setAttribute('aria-label','本轮流程地图；方向键平移，加减键缩放，0适应，Home恢复');host.append(viewport);
+   const layoutHost=el('div','rm-layout');host.append(layoutHost);
+   viewport=el('section','rm-map');viewport.tabIndex=0;viewport.setAttribute('aria-label','本轮流程地图；方向键平移，加减键缩放，0适应，Home恢复');layoutHost.append(viewport);
    world=el('div','rm-world');viewport.append(world);draw();
    const hud=el('div','rm-hud'),nav=el('div'),results=el('div','rm-results');const back=el('a','rm-button','回审计');back.href=screen.audit.href('audit');nav.append(back);
    const info=button('本轮信息',()=>information(info)),list=button('记录 '+model.nodes.length,()=>records(list)),time=button('时间带',()=>timeline(time));nav.append(info,list,time);hud.append(nav,results);viewport.append(hud);
@@ -233,7 +338,7 @@ globalThis.EchoViews.round=(function(){
    closeButton.addEventListener('pointerdown',e=>{closePoint=e.pointerType==='touch'?{x:e.clientX,y:e.clientY}:null;if(closePoint)e.preventDefault();});
    closeButton.addEventListener('pointercancel',()=>{closePoint=null;});
    closeButton.addEventListener('pointerup',e=>{const start=closePoint;closePoint=null;if(!start)return;const r=closeButton.getBoundingClientRect();if(Math.hypot(e.clientX-start.x,e.clientY-start.y)<8&&e.clientX>=r.left&&e.clientX<=r.right&&e.clientY>=r.top&&e.clientY<=r.bottom){e.preventDefault();close();}});
-   bar.append(el('h2'),closeButton);overlayBody=el('div','rm-overlay-body');overlay.append(bar,overlayBody);viewport.append(overlay);
+   bar.append(el('h2'),closeButton);overlayBody=el('div','rm-overlay-body');overlay.append(bar,overlayBody);layoutHost.append(overlay);
    preview=el('div','rm-preview');preview.hidden=true;viewport.append(preview);
    camera=globalThis.EchoRoundMap.attach(viewport,world,{adjusting:()=>adjusting,onCamera:c=>{scale.textContent=Math.round(c.k*100)+'%';},onInterrupt:()=>{stopDemo(false);preview.hidden=true;},onTap:n=>{const key=n.dataset.edge;if(key){const e=model.edges.find(e=>e.from+':'+e.to===key);selectEdge(e,n);}else selectNode(Number(n.dataset.node),n);},onNodeDrag:(i,dx,dy)=>{const o=offsets.get(i)||{x:0,y:0};nodeEls.get(i).setAttribute('transform','translate('+(o.x+dx)+','+(o.y+dy)+')');const previous=offsets.get(i);offsets.set(i,{x:o.x+dx,y:o.y+dy});redrawLines();if(previous)offsets.set(i,previous);else offsets.delete(i);},onNodeCommit:(i,dx,dy)=>{const o=offsets.get(i)||{x:0,y:0};offsets.set(i,{x:o.x+dx,y:o.y+dy});redrawLines();},onFit:()=>camera.fit(bounds()),onReset:reset});
    initial();if(restore?.camera)camera.set(restore.camera);for(const[i,o]of offsets)nodeEls.get(i)?.setAttribute('transform','translate('+o.x+','+o.y+')');redrawLines();paintDemo();

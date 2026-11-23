@@ -46,7 +46,16 @@
       "path": "LICENSES/yauzl-3.4.0.txt",
       "sha256": "b303783d5eb7ca50b853ffa5f145e4e7998fab339831d848f507ca6cd970577a",
       "scope": "runtime-distribution"
+    },
+    {
+      "path": "web/mock/final/vendor/jiulin/NOTICE.txt",
+      "sha256": "709477aa00d4f09217c1bdd6599ac56002fd86b6e3f2d86ecb572c86f7bb136b",
+      "scope": "runtime-distribution"
+    },
+    {
+      "path": "web/mock/final/vendor/jiulin/THREE-LICENSE.txt",
+      "sha256": "7dddf7c5b8fd10ee654db8857d75d104b5557889aa5a91fc4ca545ea7c07062f",
+      "scope": "runtime-distribution"
     }
-  ],
-  "developmentFixture": "tests/fixtures/host-web-app/SOURCE.json"
+  ]
 }

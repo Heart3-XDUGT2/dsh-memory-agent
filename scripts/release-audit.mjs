@@ -8,7 +8,7 @@ import { isBuiltin } from 'node:module'
 const EXCLUDED = new Set(['.git', 'node_modules', '.scratch', '.dev-host',
   '__pycache__', '.pytest_cache', '.mypy_cache', '.ruff_cache', '.cache'])
 const IMAGE = /\.(?:png|jpe?g|webp|gif|avif|svg|ico|bmp|tiff?)$/iu
-const APPROVED_IMAGE_PATH = /^docs\/images\/[^/]+\.png$/u
+const APPROVED_IMAGE_PATH = /^docs\/images\/showcase\/[^/]+\.png$/u
 const SECRET_RULES = [
   ['github-token', /\b(?:gh[pousr]_[A-Za-z0-9]{20,255}|github_pat_[A-Za-z0-9_]{20,255})\b/gu],
   ['openai-key', /\bsk-(?:proj-|svcacct-)?[A-Za-z0-9_-]{20,255}\b/gu],
@@ -57,7 +57,7 @@ function entryPath(raw) {
 /** Also apply to npm pack --json `files`; this never opens archive contents. */
 export function auditPackEntries(entries, { approvedImages = {} } = {}) {
   const findings = []
-  if (Object.keys(approvedImages).length > 2) findings.push({ rule: 'image-policy-limit', file: '(policy)', line: 0 })
+  if (Object.keys(approvedImages).length > 4) findings.push({ rule: 'image-policy-limit', file: '(policy)', line: 0 })
   for (const entry of entries) {
     const file = entryPath(entry)
     if (!file) { findings.push({ rule: 'invalid-pack-path', file: '(package entry)', line: 0 }); continue }
@@ -196,7 +196,7 @@ export function auditRelease({ root: requestedRoot, approvedImages = {}, approve
     }
   }
   walk(root)
-  if (Object.keys(approvedImages).length > 2) add('image-policy-limit', '(policy)')
+  if (Object.keys(approvedImages).length > 4) add('image-policy-limit', '(policy)')
   for (const [file, hash] of Object.entries(approvedImages)) {
     if (!/^[0-9a-f]{64}$/u.test(hash) || !APPROVED_IMAGE_PATH.test(file)) add('invalid-image-policy', file)
     if (!files.includes(file)) add('approved-image-missing', file)

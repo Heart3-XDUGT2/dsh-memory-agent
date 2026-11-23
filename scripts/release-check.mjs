@@ -5,7 +5,6 @@ import vm from 'node:vm'
 import crypto from 'node:crypto'
 import { spawnSync } from 'node:child_process'
 import { auditRelease, auditPackEntries } from './release-audit.mjs'
-import { verifyDevelopment } from './dev-bootstrap.mjs'
 import { releaseEnvironment } from './release-env.mjs'
 import { runNpm } from './npm-runner.mjs'
 const root = path.resolve(import.meta.dirname, '..'), context = releaseEnvironment('check')
@@ -32,9 +31,6 @@ function sourceFiles(directory, out = []) {
   return out
 }
 try {
-  const development = await verifyDevelopment()
-  context.env.DSH_WEB_APP = development.presetRoot
-  report.hostVersion = development.hostVersion
   const audit = auditRelease({ root, ...policy })
   report.sourceAudit = audit
   if (!audit.passed) throw Error('Source privacy, path or dependency audit failed')
@@ -51,29 +47,25 @@ try {
     }
   }
   report.syntax = { files: syntaxCount, inlineScripts: inlineCount }
-  run('audit-negative-controls', ['--test', '--test-reporter=tap', 'tests/release-audit.test.js'])
-  run('isolated-import-smoke', ['--import', './tests/release-isolation.mjs', 'scripts/smoke-lib.mjs'])
-  run('preset-contract', ['scripts/check-preset-patch.mjs'])
   const licenseManifest = JSON.parse(fs.readFileSync(path.join(root, 'LICENSES/SOURCES.json')))
   if (!Array.isArray(licenseManifest.files) || !licenseManifest.files.length) throw Error('License provenance manifest is missing')
   for (const entry of licenseManifest.files) {
     if (!entry.path || !entry.sha256 || sha(path.join(root, entry.path)) !== entry.sha256) throw Error('Third-party license provenance mismatch')
   }
   report.licenseFiles = licenseManifest.files.length
-  // Run the trusted prepack hygiene explicitly, then request unambiguous npm JSON.
-  run('prepack-cleanup', ['scripts/clean-pyc.mjs'])
   run('prepack-clean-verify', ['scripts/clean-pyc.mjs', '--check'])
-  const text = runNpm(['pack', '--ignore-scripts', '--json', '--pack-destination', folder], { cwd: root, env: context.env })
+  const text = runNpm(['pack', '--dry-run', '--ignore-scripts', '--json'], { cwd: root, env: context.env })
   const [pack] = JSON.parse(text), findings = auditPackEntries(pack.files, policy)
   if (findings.length) { report.packFindings = findings; throw Error('Forbidden files in npm package') }
   const names = new Set(pack.files.map(file => file.path))
   for (const needed of ['PRIVACY.md', 'SECURITY.md', 'CONTRIBUTING.md', 'THIRD_PARTY.md',
     'lib/ipc-core/LICENSE', 'web/vendor/LICENSE.d3.txt', 'web/mock/final/index.html',
-    'web/mock/final/emotion-charts.css', 'npm-shrinkwrap.json', 'LICENSES/SOURCES.json']) {
+    'web/mock/final/emotion-charts.css', 'web/mock/final/memory-star.html',
+    'web/mock/final/memory-star-experience.js', 'web/mock/final/vendor/jiulin/NOTICE.txt',
+    'web/mock/final/vendor/jiulin/THREE-LICENSE.txt', 'npm-shrinkwrap.json', 'LICENSES/SOURCES.json']) {
     if (!names.has(needed)) throw Error('Required packaged asset missing: ' + needed)
   }
-  report.package = { file: path.relative(root, path.join(folder, pack.filename)).replaceAll('\\', '/'),
-    sha256: sha(path.join(folder, pack.filename)), files: pack.files.length, bytes: pack.size, integrity: pack.integrity }
+  report.package = { dryRun: true, files: pack.files.length, bytes: pack.size }
   report.passed = true
 } catch (error) {
   report.error = String(error.message); process.exitCode = 1

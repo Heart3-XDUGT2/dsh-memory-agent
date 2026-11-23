@@ -1113,6 +1113,7 @@ globalThis.EchoViews.audit = (function () {
         // 产品的长名（audit-view 的 toolHuman：`出站·她说` / `QQ 说话` / `关怀心跳`）：
         // 短标签撞车时用它兜底，比行号更像话。
         toolLong: humanOf(tool) === tool ? "" : humanOf(tool),
+        memoryExtractProjection: step.row?.memoryExtractProjection || null,
         what: step.what,
         ms: step.ms,
         msText: step.ms > 0 ? durationText(step.ms) : api.missing,

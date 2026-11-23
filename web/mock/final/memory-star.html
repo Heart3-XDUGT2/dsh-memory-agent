@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="color-scheme" content="dark">
+  <meta name="description" content="在 Echo 三维记忆星图中浏览记忆、交通节点和它们的连接，按日期筛选并查看记忆摘要。">
+  <title>记忆星图 · Echo</title>
+  <link rel="icon" href="data:,">
+  <link rel="stylesheet" href="./memory-star.css">
+</head>
+<body>
+  <div id="nebula" aria-hidden="true"></div>
+  <canvas id="webgl" aria-label="可旋转的三维记忆星图"></canvas>
+  <div id="grain" aria-hidden="true"></div>
+  <main id="stage">
+    <div id="labels" aria-hidden="true"></div>
+    <header class="masthead">
+      <div class="brand">
+        <div class="overline" lang="en">Echo / Memory Constellation</div>
+        <h1>记忆星图</h1>
+        <p id="counts"></p>
+      </div>
+      <div class="meta">
+        <span class="sync" id="sync"><i></i><span id="status" role="status">正在读取图谱</span></span>
+        <button class="recall-btn" id="browse" type="button" aria-controls="readout" aria-expanded="false"><i></i>星图目录</button>
+        <button class="filter quick-action" id="explore" type="button">随机聚焦 ↗</button>
+      </div>
+    </header>
+
+    <footer class="bottom">
+      <div class="left-foot">
+        <div class="filters" aria-label="显示内容">
+          <button class="filter" id="memories" aria-pressed="true">记忆</button>
+          <button class="filter" id="hubs" aria-pressed="true">交通节点</button>
+          <button class="filter" id="lines" aria-pressed="true">关系线</button>
+        </div>
+        <div class="legend"><span><i class="gold"></i>记忆</span><span><i class="hub"></i>交通节点</span></div>
+      </div>
+      <div class="timeline">
+        <div class="dayline"><label class="label" for="age">时间范围</label><output id="ageOut" for="age">全部日期</output></div>
+        <input id="age" type="range" min="0" max="0" step="1" value="0" aria-label="显示截至所选日期的记忆">
+        <div class="ticks"><span id="earliest"></span><span id="latest"></span></div>
+      </div>
+      <div class="right-foot">
+        <button class="filter" id="motion" aria-pressed="true">暂停自转</button>
+        <button class="filter" id="home">全景</button>
+        <button class="filter" id="refresh">刷新</button>
+      </div>
+    </footer>
+
+    <aside class="readout" id="readout" aria-label="星图目录与节点详情" hidden>
+      <div class="readout-head"><span class="class" id="kind"></span><button class="close" id="close-panel" aria-label="关闭详情">×</button></div>
+      <div id="panel-body"></div>
+    </aside>
+    <div class="stage-message" id="message" hidden></div>
+  </main>
+  <div id="tooltip" aria-hidden="true"><b></b><span></span></div>
+  <noscript>请启用 JavaScript 查看星图。</noscript>
+  <script defer src="./memory-star-experience.js"></script>
+</body>
+</html>

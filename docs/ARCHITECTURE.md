@@ -4,8 +4,8 @@
 > 事实来源:仓库源码(逐文件精读)、`CHANGELOG.md`(77 个版本条目)、`docs/` 现有文档、
 > 以及活库 `~/.dsh/echo/echo.db` 的只读实测。凡未核实处均标注「(未核实)」。
 >
-> 姊妹文档:`docs/README.md`(索引)、`docs/DEFENSE.md`(答辩)、
-> `docs/MEMORY_ARCHITECTURE.md`(记忆字段语义)、`docs/CORE_IN_DSH_PLAN.md`(归位计划)。
+> 这是 v0.30.1 的架构记录，不是当前发布树的文件清单或测试结果。
+> 另见[文档索引](README.md)、[记忆字段语义](MEMORY_ARCHITECTURE.md)和[发布树检查](TESTING.md)。
 
 ---
 
@@ -47,7 +47,7 @@ DSH(cordis 插件星座)                Python sidecar(worker.py)
 「JS 壳 + 帧协议驱动 sidecar」的形态。**分工铁律:LLM 调用只留在壳侧**(走宿主
 subagents 官方通道),引擎纯标准库、不碰网络、不碰密钥。
 
-### 规模(实测)
+### 历史规模(v0.30.1 实测)
 
 | 层 | 规模 |
 |---|---|
@@ -510,6 +510,8 @@ mood 1~10。`getDiaryDate` 非 null 即拒绝(幂等)。**空日子也写**。
 
 ## 十、测试与质量
 
+当前发布树不含以下旧测试套件。表中数字仅记录 v0.30.1 当时的验证范围。
+
 | 层 | 数量 | 覆盖 |
 |---|---|---|
 | JS(node:test) | **580** | 存储/DMAE/检索/渲染/规整/引擎四态/心跳因果链/工具帧往返/SSE/日记/人格/传话桥 + 面板↔设置契约 + 归档脚本 + 真库迁移彩排 + DDL 对等 |
@@ -518,8 +520,7 @@ mood 1~10。`getDiaryDate` 非 null 即拒绝(幂等)。**空日子也写**。
 | 冒烟 | 5 脚本 | 活库副本 + 真 HTTP |
 | 静态检查 | 4 条 | `check`(语法全量)/`hygiene`(卫生报告)/`check:persona`(人格真送达)/`check:tools`(工具 schema) |
 
-**装机前纪律**:`npm run check` → JS 电池 → Python 电池(+ 适配器)→ `check:tools`
-→ 装机 → 提交。
+当前发布检查使用 `npm run release:check`，范围见[发布树检查](TESTING.md)。它是静态检查，不代表 DSH 宿主、Python 运行时或跨仓集成测试已通过。
 
 ---
 
@@ -632,25 +633,10 @@ mood 1~10。`getDiaryDate` 非 null 即拒绝(幂等)。**空日子也写**。
 
 ## 十五、快速上手
 
+装机、核验安装和排障见[安装说明](INSTALL.md)。检查发布树时，在源码目录执行：
+
 ```powershell
-# 装机与自检
-node scripts\install.mjs            # 复制装机 + 登记 bundle/依赖 + npm pack
-node scripts\install.mjs --doctor   # 起不来时先跑这个:逐条指名问题与修法
-node scripts\install.mjs --check    # 校验装机状态
-
-# 开发循环
-npm run check                       # 语法检查全部 JS
-npm test                            # JS 电池(580)
-npm run test:py                     # Python 电池(234)
-npm run test:adapter                # 适配器电池(47)
-npm run smoke:relay                 # 传话桥端到端冒烟(不需要 dsh web)
-npm run check:persona               # 她真的带着这份人格吗
-npm run probe                       # 一致性探针(主动/记忆/别名三条链路)
-
-# 数据运维(默认只读/dry-run)
-npm run memory:doctor               # 记忆体检七项
-npm run accept                      # R4 验收探针
-npm run hygiene                     # 仓库卫生报告
-
-# 改完 lib/ 或 python/ ⇒ 必须重启 dsh web;web/ 静态页刷新即可
+npm run release:check
 ```
+
+检查范围与限制见[发布树检查](TESTING.md)。该命令不安装或启动 DSH，不替代宿主测试。

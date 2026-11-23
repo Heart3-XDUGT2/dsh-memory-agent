@@ -74,15 +74,16 @@ def derive_keywords(text, cap=12):
     return kws[:cap]
 
 
-def insert_memory(
+def _insert_memory_impl(
     conn, user_id, keywords_json, summary, score, *,
     source="private", source_label="", actor="", speaker_id="",
     is_master=True, intrinsic_value=0.0, occurred_at=0.0,
     temporal_status="", memory_key="", layer="", now=None,
     status="active", dedupe=None, aug_keys=None,
-    memory_type="", memory_stability="",
+    memory_type="", memory_stability="", _owns_transaction=True,
+    _defer_strength=False,
 ):
-    """写入一条情景记忆,返回 memory_id。
+    """Write the legacy body decision; transaction ownership is selected by wrappers.
 
     status(M2-h):'active' = 正式记忆(检索/反思可见);
     'quarantined' = 待观察候选(置信度 0.55~0.75,只落库不进检索)。
@@ -108,6 +109,10 @@ def insert_memory(
     (v0.29.0 个人机器人裁剪:channel / channel_chat 渠道维度随群聊拒收
     一起退役 —— 只服务他一个人,记忆不再分渠道。)
     """
+    if _defer_strength and _owns_transaction:
+        raise ValueError("deferred strength requires caller-owned transaction")
+    if not _owns_transaction and not conn.in_transaction:
+        raise sqlite3.ProgrammingError("caller_transaction_required")
     now = float(now) if now else time.time()
     i_val = float(intrinsic_value or 0.0)
     # 2026-09-30:写入侧的"说法键"(fact-augmented keys,LongMemEval 里的 +9.4% 那一招)。
@@ -129,7 +134,19 @@ def insert_memory(
     clean_summary = (summary or "").strip()
     my_status = "quarantined" if str(status or "").strip() == "quarantined" else "active"
 
-    def _reinforce(row_id, old_h, last):
+    def _reinforce(row_id, old_h, last, reason):
+        if _defer_strength:
+            conn.execute(
+                "UPDATE episodic_memory SET learned_at = CASE"
+                " WHEN learned_at > 0 THEN learned_at ELSE ? END WHERE memory_id = ?",
+                (now, int(row_id)),
+            )
+            return int(row_id), {
+                "action": "reinforce",
+                "memoryId": int(row_id),
+                "occurredAtMs": int(round(now * 1000)),
+                "reason": reason,
+            }
         old_h = float(old_h or 0.0) or h0
         last = float(last or now)
         new_h = dmae.reinforce_half_life(
@@ -144,8 +161,9 @@ def insert_memory(
             " WHERE memory_id = ?",
             (new_h, now, now, int(row_id)),
         )
-        conn.commit()
-        return int(row_id)
+        if _owns_transaction:
+            conn.commit()
+        return int(row_id), None
 
     prev_id = 0
     if key:
@@ -163,7 +181,7 @@ def insert_memory(
         if prev is not None:
             if str(prev[1] or "").strip() == clean_summary:
                 # 同一句话再说第二遍:这是一次「想起」,不是一条新记忆。
-                return _reinforce(prev[0], prev[2], prev[3])
+                return _reinforce(prev[0], prev[2], prev[3], "same_slot_same_summary")
             # v2-A1:集合键**不换代**(并列);其余键照旧换代。
             prev_id = 0 if collection_key else int(prev[0])
         if my_status == "quarantined":
@@ -178,7 +196,7 @@ def insert_memory(
                 (user_id, key),
             ).fetchone()
             if act is not None and str(act[1] or "").strip() == clean_summary:
-                return _reinforce(act[0], act[2], act[3])
+                return _reinforce(act[0], act[2], act[3], "quarantined_confirms_active_summary")
 
     # ---- v0.16.0 M3 近重复兜底(槽位路径没命中时才扫)----
     # 判据在 dedupe.py(权威);同层 + 同 status 是硬前提。
@@ -207,7 +225,7 @@ def insert_memory(
                 cancel.checkpoint()
                 if str(row[1] or "").strip() == clean_summary:
                     # 同句(哪怕键不同)也算一次「想起」
-                    return _reinforce(row[0], row[3], row[4])
+                    return _reinforce(row[0], row[3], row[4], "dedupe_same_summary")
                 other = {"keywords": row[2], "summary": row[1],
                          "layer": layer, "status": my_status}
                 if dedupe_mod.is_near_duplicate(
@@ -276,8 +294,45 @@ def insert_memory(
             " AND status = 'quarantined'",
             (user_id, key),
         )
-    conn.commit()
-    return mid
+    if _owns_transaction:
+        conn.commit()
+    return mid, None
+
+
+def insert_memory(
+    conn, user_id, keywords_json, summary, score, *,
+    source="private", source_label="", actor="", speaker_id="",
+    is_master=True, intrinsic_value=0.0, occurred_at=0.0,
+    temporal_status="", memory_key="", layer="", now=None,
+    status="active", dedupe=None, aug_keys=None,
+    memory_type="", memory_stability="",
+):
+    """Legacy public writer; keeps its existing self-committing behavior."""
+    memory_id, _ = _insert_memory_impl(
+        conn, user_id, keywords_json, summary, score,
+        source=source, source_label=source_label, actor=actor, speaker_id=speaker_id,
+        is_master=is_master, intrinsic_value=intrinsic_value, occurred_at=occurred_at,
+        temporal_status=temporal_status, memory_key=memory_key, layer=layer, now=now,
+        status=status, dedupe=dedupe, aug_keys=aug_keys,
+        memory_type=memory_type, memory_stability=memory_stability,
+        _owns_transaction=True, _defer_strength=False,
+    )
+    return memory_id
+
+
+def insert_memory_caller_owned(conn, user_id, keywords_json, summary, score, **options):
+    """Apply the legacy body/slot decision inside the caller's transaction.
+
+    Returns ``{memoryId, strengthAction}``; the caller supplies trusted S1 event
+    identity and applies that event in the same transaction when requested.
+    """
+    if not conn.in_transaction:
+        raise sqlite3.ProgrammingError("caller_transaction_required")
+    memory_id, strength_action = _insert_memory_impl(
+        conn, user_id, keywords_json, summary, score,
+        _owns_transaction=False, _defer_strength=True, **options,
+    )
+    return {"memoryId": memory_id, "strengthAction": strength_action}
 
 
 def cleanup_stale(conn, user_id, ttl_days, *, now=None):

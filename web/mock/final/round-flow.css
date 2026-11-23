@@ -34,11 +34,22 @@ body:has(#view-round:not([hidden])) .greeting-note { margin-top:6px; font-size:1
 #view-round .rg-node.is-demo .rg-box { fill:var(--surface); stroke:var(--accent); stroke-width:3; }
 #view-round .rg-line { stroke:var(--accent); stroke-width:1.7; stroke-opacity:.7; stroke-dasharray:none; stroke-dashoffset:0; transition:stroke-opacity 120ms ease-out,stroke-width 120ms ease-out; }
 #view-round .rg-edge.is-take .rg-line { stroke-dasharray:7 5; }
+#view-round .rg-edge.is-fork .rg-line { stroke:var(--accent); stroke-width:2; stroke-opacity:.8; }
+#view-round .rg-edge.is-pipeline .rg-line { stroke:var(--accent); stroke-opacity:.9; }
 #view-round .rg-edge.is-record .rg-line,#view-round .rg-edge.is-out .rg-line { stroke:var(--muted); stroke-dasharray:2 5; }
 #view-round .rg-edge.is-demo .rg-line { stroke-width:3; stroke-opacity:1; }
 #view-round .rg-edge.is-active .rg-line { stroke-width:3; stroke-opacity:1; }
 #view-round .rg-head { transition:fill-opacity 120ms ease-out; }
 #view-round .rf-origin rect { fill:var(--surface); stroke:var(--control); stroke-dasharray:4 4; }
+#view-round .rg-output { fill:var(--accent); font-size:13px; font-weight:500; }
+#view-round .rg-join-note { fill:var(--accent); font-size:12px; font-weight:600; }
+#view-round .rg-node.is-join .rg-box { stroke:var(--accent); stroke-width:1.5; }
+#view-round .rg-node.is-out .rg-box { fill:#f2f3f2; stroke:var(--control); stroke-dasharray:5 4; }
+#view-round .rm-evidence-strip { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:8px; margin:0 12px 10px; }
+#view-round .rm-evidence-item { min-width:0; padding:10px 12px; border:1px solid var(--border); border-radius:8px; background:var(--ground); }
+#view-round .rm-evidence-item h2 { margin:0 0 4px; color:var(--muted); font-size:12px; font-weight:600; line-height:1.4; }
+#view-round .rm-evidence-item p { margin:0; color:var(--text); font-size:14px; line-height:1.5; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+#view-round .rm-evidence-background { grid-column:1/-1; margin:0; padding:5px 2px 0; color:var(--muted); font-size:13px; line-height:1.5; }
 #view-round .rf-detail { margin-top:16px; padding:18px; background:var(--surface); border-radius:8px; transition:background-color 180ms ease-out; }
 #view-round .rf-detail[hidden] { display:none; }
 #view-round .rf-detail-head { display:flex; align-items:center; justify-content:space-between; gap:16px; }
@@ -51,10 +62,26 @@ body:has(#view-round:not([hidden])) .greeting-note { margin-top:6px; font-size:1
 #view-round .rf-detail .rg-pop-key,#view-round .rf-detail .rg-pop-val { font-size:14px; }
 #view-round .rf-detail-note { margin:12px 0; font-size:14px; line-height:1.7; color:var(--muted); }
 #view-round .rf-background { margin:12px 0 18px; }
+#view-round .rf-memory-events { margin:14px 0 20px; padding:14px 0 0; border-top:1px solid var(--rule); }
+#view-round .rf-stage-facts { margin:14px 0 20px; padding:14px 0 0; border-top:1px solid var(--rule); }
+#view-round .rf-stage-facts > h3 { margin:0 0 8px; font-size:16px; line-height:1.5; }
+#view-round .rf-stage-fact { margin:8px 0; padding:0 10px; border-left:3px solid var(--control); background:var(--surface); }
+#view-round .rf-stage-fact[open] { border-left-color:var(--accent); }
+#view-round .rf-stage-fact summary { padding:8px 0; font-size:14px; font-weight:600; }
+#view-round .rf-memory-events > h3 { margin:0 0 8px; font-size:16px; line-height:1.5; }
+#view-round .rf-memory-event { margin:8px 0; padding:0 10px; border-left:3px solid var(--control); background:var(--surface); }
+#view-round .rf-memory-event[open] { border-left-color:var(--accent); }
+#view-round .rf-memory-event summary { padding:8px 0; font-size:14px; font-weight:600; }
+#view-round .rf-memory-event .rf-detail-note { margin:4px 0 8px; }
 #view-round .rf-time-zoom { font-size:14px; }
 .rg-pop .rg-pop-key,.rg-pop .rg-pop-val { font-size:13px; }
 .rg-pop { max-height:65vh; overflow:hidden; }
 @media(max-width:640px) {
+  #view-round .rm-evidence-strip { grid-template-columns:repeat(3,minmax(0,1fr)); margin:0 6px 6px; gap:5px; }
+  #view-round .rm-evidence-item { padding:6px 7px; }
+  #view-round .rm-evidence-item h2 { font-size:11px; }
+  #view-round .rm-evidence-item p { font-size:12px; white-space:nowrap; }
+  #view-round .rm-evidence-background { grid-column:1/-1; padding-top:0; font-size:12px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
   #view-round .rg-panel { padding:12px 10px; }
   #view-round .rf-control { min-height:44px; padding:8px 10px; }
   #view-round .rf-toolbar { gap:6px; }

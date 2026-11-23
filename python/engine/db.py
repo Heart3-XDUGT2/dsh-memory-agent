@@ -696,6 +696,16 @@ def _ensure_indexes(conn):
     conn.commit()
 
 
+def connect_raw(db_path, *, read_only=False):
+    """Open an existing file without schema, migrations, repairs or journal changes."""
+    if db_path == ":memory:":
+        return sqlite3.connect(":memory:")
+    path = Path(db_path).resolve()
+    if not path.is_file():
+        raise FileNotFoundError("db file missing")
+    return sqlite3.connect(path.as_uri() + ("?mode=ro" if read_only else "?mode=rw"), uri=True)
+
+
 def connect(db_path, must_exist=False):
     """打开库并确保引擎 schema 就绪。
 
@@ -705,7 +715,15 @@ def connect(db_path, must_exist=False):
     """
     if must_exist and db_path != ":memory:" and not Path(db_path).exists():
         raise FileNotFoundError("db not found: " + str(db_path))
-    conn = sqlite3.connect(db_path)
+    conn = connect_raw(db_path) if must_exist else sqlite3.connect(db_path)
+    # The manifest must be inspected before legacy initialization can change it.
+    from .memory_authority import inspect_memory_authority
+    authority = inspect_memory_authority(conn)
+    if authority["status"] == "blocked":
+        conn.close()
+        raise RuntimeError(authority["reason"])
+    if authority["status"] in ("prepared", "active"):
+        return conn
     conn.execute("PRAGMA busy_timeout = 5000")
     conn.executescript(_DDL)
     _migrate_graph_edges(conn)
