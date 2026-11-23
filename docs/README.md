@@ -1,13 +1,13 @@
 # docs/ 文档索引
 
-当前发布候选：`0.46.0-rc.1`。面向使用者，先读：
+当前发布候选：`0.46.0-rc.2`。面向使用者，先读：
 
 1. [安装与排障](INSTALL.md)
 2. [项目架构](ARCHITECTURE.md)
 3. [API](API.md)
 4. [测试与验证](TESTING.md)
 5. [DSH兼容性](COMPAT_DSH_0.2.md)
-6. [发行说明](releases/0.46.0-rc.1.md)
+6. [发行说明](releases/0.46.0-rc.2.md)
 7. [隐私与第三方来源](../PRIVACY.md) / [THIRD_PARTY.md](../THIRD_PARTY.md)
 
 ## 当前参考

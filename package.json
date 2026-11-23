@@ -1,6 +1,6 @@
 {
   "name": "dsh-echo",
-  "version": "0.46.0-rc.1",
+  "version": "0.46.0-rc.2",
   "description": "Echo: DeepSeek Harness companion personality, memory and local control panel",
   "type": "module",
   "main": "lib/index.js",

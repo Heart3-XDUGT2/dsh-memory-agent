@@ -8,7 +8,7 @@
 
 Echo 是 [DeepSeek Harness（DSH）](https://www.npmjs.com/package/@deepseek-ai/dsh) 插件，提供人格、跨会话记忆、情绪、关怀、日记和审计面板。Echo 运行在 DSH 内；QQ 与语音由独立插件接入。
 
-**当前为 `0.46.0-rc.1` 预发布。** 先用独立数据目录评估并备份已有数据。本地存储不等于全部处理离线：对话、检索记忆和反思材料可能经宿主交给你选择的模型服务，详见 [PRIVACY.md](PRIVACY.md)。
+**当前为 [0.46.0-rc.2 预发布](docs/releases/0.46.0-rc.2.md)。** 先用独立数据目录评估并备份已有数据。本地存储不等于全部处理离线：对话、检索记忆和反思材料可能经宿主交给你选择的模型服务，详见 [PRIVACY.md](PRIVACY.md)。
 
 ## 界面预览
 
@@ -235,4 +235,4 @@ npm run release:check
 
 这是本地单用户插件，不是已验证的公网或多租户服务。模型输出与记忆判断可能出错；维护操作可能写入持久数据。可选向量模型、TTS与QQ平台另有依赖、费用和政策边界。
 
-自有代码采用[MIT](LICENSE)；随附的 IPC、D3、3D 星图及生产依赖来源见[第三方声明](THIRD_PARTY.md)和[许可证目录](LICENSES/)。论文引用不等于复制代码。变更见[预发布说明](docs/releases/0.46.0-rc.1.md)。
+自有代码采用[MIT](LICENSE)；随附的 IPC、D3、3D 星图及生产依赖来源见[第三方声明](THIRD_PARTY.md)和[许可证目录](LICENSES/)。论文引用不等于复制代码。变更见[预发布说明](docs/releases/0.46.0-rc.2.md)。
